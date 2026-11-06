@@ -42,7 +42,7 @@ function setBadge(text, title) {
   try {
     void chrome.action.setBadgeText({ text })
     void chrome.action.setBadgeBackgroundColor({ color: text === 'ON' ? '#2f9e44' : '#868e96' })
-    void chrome.action.setTitle({ title: title || 'DSH Browser Companion' })
+    void chrome.action.setTitle({ title: title || 'DSH Browser Extension' })
   } catch {
     // The action API is unavailable in a few test harnesses.
   }
@@ -118,7 +118,7 @@ function connect() {
       ws.send(JSON.stringify({
         type: 'hello',
         token,
-        name: 'DSH Browser Companion',
+        name: 'DSH Browser Extension',
         version: VERSION,
         userAgent: navigator.userAgent
       }))

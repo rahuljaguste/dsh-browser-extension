@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "DSH Browser Companion",
-  "version": "0.7.0",
+  "name": "DSH Browser Extension",
+  "version": "0.8.0",
   "description": "Let DeepSeek Harness drive your Chrome tabs: navigate, snapshot, click, type, screenshot.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -20,7 +20,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "DSH Browser Companion",
+    "default_title": "DSH Browser Extension",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",

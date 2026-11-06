@@ -2,7 +2,7 @@
 # registers the browser_* tools.
 - insert:
     - id: browser-companion
-      name: 'dsh-browser-companion'
+      name: 'dsh-browser-extension'
       config:
         # Loopback port the Chrome extension dials. Change it here and in the
         # extension popup together.

@@ -1,5 +1,5 @@
 /**
- * DSH Browser Companion — Host half.
+ * DSH Browser Extension — Host half.
  *
  * Registers the `browser_*` tools and runs the loopback bridge that a Chrome
  * extension dials. The extension half lives in `./extension`; a browser tab is

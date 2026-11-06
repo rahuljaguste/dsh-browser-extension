@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0
+
+- Renamed the repository and package to `dsh-browser-extension`; the Chrome
+  extension now shows as "DSH Browser Extension".
+
 ## 0.7.0
 
 - Renamed to `dsh-browser-companion` so it can be published to npm.

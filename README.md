@@ -1,6 +1,6 @@
-# DSH Browser Companion
+# DSH Browser Extension
 
-[![CI](https://github.com/rahuljaguste/dsh-browser-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rahuljaguste/dsh-browser-companion/actions/workflows/ci.yml)
+[![CI](https://github.com/rahuljaguste/dsh-browser-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/rahuljaguste/dsh-browser-extension/actions/workflows/ci.yml)
 
 A Chrome companion for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness):
 your agent gets real `browser_*` tools over the tabs you are already logged in to,

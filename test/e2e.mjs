@@ -90,7 +90,7 @@ try {
 
   await waitUntil(() => bridge.status().connected, 10000, 'extension handshake')
   check('extension paired with the bridge', bridge.status().connected)
-  check('bridge reports the client name', bridge.status().client?.name === 'DSH Browser Companion')
+  check('bridge reports the client name', bridge.status().client?.name === 'DSH Browser Extension')
 
   // --- tools -----------------------------------------------------------------
   const definitions = new Map()
