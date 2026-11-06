@@ -1,0 +1,5 @@
+node_modules/
+.pw-browsers/
+*.log
+.DS_Store
+coverage/

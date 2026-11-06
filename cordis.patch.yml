@@ -1,0 +1,19 @@
+# The browser companion bundle: one Host row that serves the local bridge and
+# registers the browser_* tools.
+- insert:
+    - id: browser-companion
+      name: '@local/dsh-browser-companion'
+      config:
+        # Loopback port the Chrome extension dials. Change it here and in the
+        # extension popup together.
+        port: 8787
+        # Arbitrary JavaScript inside the page. Off unless you ask for it.
+        allowEvaluate: false
+        # Per-command deadline for a round trip to the extension.
+        commandTimeoutMs: 45000
+        # Working directory of the side-panel chat Session. Defaults to $HOME.
+        # chatCwd: /Users/you/projects
+        # Tools the side-panel agent may use: open | no-shell | browser-only.
+        # no-shell keeps reads (attachments, screenshots) and drops bash/write/edit.
+        toolPolicy: no-shell
+

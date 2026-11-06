@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DSH Browser Companion</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <span id="dot" class="dot"></span>
+      <h1>DSH Browser Companion</h1>
+    </header>
+    <p id="status" class="status">Checking connection…</p>
+    <label>
+      <span>Bridge port</span>
+      <input id="port" type="number" min="1" max="65535" placeholder="8787" />
+    </label>
+    <label>
+      <span>Pairing token</span>
+      <input id="token" type="text" spellcheck="false" placeholder="Paste the token from browser_status" />
+    </label>
+    <div class="row">
+      <button id="save">Save &amp; connect</button>
+      <button id="again" class="ghost" title="Reconnect now">Reconnect</button>
+    </div>
+    <button id="panel" class="wide ghost" title="Open the activity panel">Open side panel</button>
+    <p class="hint">
+      In DSH, run <code>browser_status</code> to read the token. Both halves must agree on the port.
+    </p>
+    <script src="popup.js"></script>
+  </body>
+</html>

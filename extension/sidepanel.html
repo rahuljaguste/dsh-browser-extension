@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DSH Browser</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="brand">
+        <span class="mark">DSH</span>
+        <span class="brand-name">Browser</span>
+      </div>
+      <div class="status-wrap">
+        <span id="dot" class="dot"></span>
+        <span id="status" class="status">Connecting…</span>
+      </div>
+      <span id="version" class="version"></span>
+    </header>
+
+    <div id="approvals" class="approvals" hidden></div>
+    <p id="error" class="error" hidden></p>
+
+    <main id="transcript" class="transcript">
+      <div id="empty" class="empty">
+        <p class="empty-title">Ask the browser</p>
+        <p class="empty-sub">It works in this tab and shows every step here.</p>
+        <div class="suggestions">
+          <button type="button" class="suggestion" data-prompt="Summarise this page in five bullets.">Summarise this page</button>
+          <button type="button" class="suggestion" data-prompt="Take a screenshot of this page.">Screenshot</button>
+          <button type="button" class="suggestion" data-prompt="Fill in the form on this page.">Fill the form</button>
+        </div>
+      </div>
+    </main>
+
+    <button id="jump" type="button" class="jump" hidden>Jump to latest</button>
+
+    <div id="pending" class="pending" hidden></div>
+
+    <form id="composer" class="composer">
+      <div class="composer-box">
+        <textarea id="input" rows="1" placeholder="Message the browser agent…"></textarea>
+        <div class="composer-row">
+          <button id="attach" type="button" class="icon" title="Attach files">+</button>
+          <span class="mode" id="mode">Enter to send</span>
+          <button id="stop" type="button" class="stop" hidden>Stop</button>
+          <button id="send" type="submit">Send</button>
+        </div>
+      </div>
+      <input id="file" type="file" multiple hidden />
+    </form>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>
