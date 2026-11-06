@@ -1,6 +1,6 @@
 {
-  "name": "@local/dsh-browser-companion",
-  "version": "0.6.0",
+  "name": "dsh-browser-companion",
+  "version": "0.7.0",
   "type": "module",
   "description": "Chrome companion for DeepSeek Harness: drive your real browser tabs, and chat with the agent from a side panel.",
   "exports": {
@@ -40,5 +40,14 @@
   ],
   "engines": {
     "node": ">=22"
+  },
+  "author": "Rahul <868090+rahuljaguste@users.noreply.github.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahuljaguste/dsh-browser-companion.git"
+  },
+  "homepage": "https://github.com/rahuljaguste/dsh-browser-companion#readme",
+  "bugs": {
+    "url": "https://github.com/rahuljaguste/dsh-browser-companion/issues"
   }
 }

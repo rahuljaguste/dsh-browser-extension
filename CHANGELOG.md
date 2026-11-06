@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+
+- Renamed to `dsh-browser-companion` so it can be published to npm.
+- Repository metadata, CI badge, extension icons.
+- Hardening: host-side limits on message size, attachment count/bytes and base64
+  validity; unique attachment names; `0700` state directory; approvals retired
+  when a turn closes; WebSocket continuation-frame guard.
+
 ## 0.6.0
 
 - Sidebar chat Session with a configurable tool policy (`no-shell` default,

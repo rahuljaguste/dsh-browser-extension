@@ -6,7 +6,7 @@ that way is the main design constraint.
 ## Setup
 
 ```sh
-git clone <repo> && cd dsh-browser-companion
+git clone https://github.com/rahuljaguste/dsh-browser-companion && cd dsh-browser-companion
 npm install                      # playwright-core, for the e2e test only
 ```
 
