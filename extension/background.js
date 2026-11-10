@@ -8,10 +8,16 @@
  */
 
 const VERSION = chrome.runtime.getManifest().version
+const PROTOCOL_VERSION = 2
 const DEFAULT_PORT = 8787
 const KEEPALIVE_MS = 20_000
 const HANDSHAKE_TIMEOUT_MS = 8_000
 const STALE_AFTER_MS = 60_000
+const RECONNECT_ALARM = 'dsh-reconnect'
+const MAX_ATTACHMENTS = 6
+const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024
+const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024
+const MAX_MESSAGE_CHARS = 32_000
 
 let settings = { token: '', port: DEFAULT_PORT }
 let socket = null
@@ -33,8 +39,38 @@ let chatStatus = 'idle'
 let chatSessionId = null
 let pendingApprovals = []
 let lastScreenshot = null
+let allowEvaluate = false
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const textEncoder = new TextEncoder()
+
+function toBase64Url(bytes) {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/** HMAC-SHA-256(token, "<role>:<nonce>"); the token itself never leaves Chrome. */
+async function proofFor(token, role, nonce) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    textEncoder.encode(token),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, textEncoder.encode(`${role}:${nonce}`))
+  return toBase64Url(new Uint8Array(signature))
+}
+
+function proofMatches(expected, given) {
+  if (typeof given !== 'string' || expected.length !== given.length) return false
+  let diff = 0
+  for (let index = 0; index < expected.length; index += 1) {
+    diff |= expected.charCodeAt(index) ^ given.charCodeAt(index)
+  }
+  return diff === 0
+}
 
 /* ------------------------------------------------------------------ badge */
 
@@ -50,8 +86,35 @@ function setBadge(text, title) {
 
 /* ---------------------------------------------------------------- socket */
 
+/** Exact decoded length of a standard base64 string (padding included). */
+function decodedBase64Bytes(data) {
+  if (typeof data !== 'string' || data.length === 0) return 0
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0
+  return Math.floor(data.length / 4) * 3 - padding
+}
+
+/** Reject oversized payloads here, before an oversized frame closes the socket. */
+function attachmentError(attachments) {
+  if (attachments.length > MAX_ATTACHMENTS) {
+    return `At most ${MAX_ATTACHMENTS} attachments per message.`
+  }
+  let total = 0
+  for (const attachment of attachments) {
+    const data = typeof attachment?.data === 'string' ? attachment.data : ''
+    const bytes = decodedBase64Bytes(data)
+    if (bytes > MAX_ATTACHMENT_BYTES) {
+      return `"${attachment?.name || 'attachment'}" is larger than 12 MB.`
+    }
+    total += bytes
+    if (total > MAX_TOTAL_ATTACHMENT_BYTES) {
+      return 'Attachments are limited to 40 MB per message.'
+    }
+  }
+  return null
+}
+
 function describeClose(event, port) {
-  if (event.code === 1008) return 'The bridge rejected the pairing token. Copy it again from browser_status.'
+  if (event.code === 1008) return 'The bridge rejected the connection (token or protocol mismatch). Update both halves and copy the token again from browser_status.'
   if (event.code === 1011) return 'The bridge reported an internal error.'
   if (event.code === 1006) return `Cannot reach ws://127.0.0.1:${port}. Is the DeepSeek Harness app running?`
   return `Disconnected from ws://127.0.0.1:${port} (code ${event.code}).`
@@ -66,6 +129,7 @@ function closeSocket() {
   const ws = socket
   socket = null
   connected = false
+  allowEvaluate = false
   clearTimeout(welcomeTimer)
   welcomeTimer = null
   stopKeepalive()
@@ -80,6 +144,7 @@ function closeSocket() {
 
 function connect() {
   if (!settings.token) {
+    clearReconnectAlarm()
     setBadge('', 'Set the pairing token in the popup')
     return
   }
@@ -112,19 +177,11 @@ function connect() {
     }
   }, HANDSHAKE_TIMEOUT_MS)
 
+  let challengeNonce = null
+
   ws.onopen = () => {
-    if (socket !== ws) return
-    try {
-      ws.send(JSON.stringify({
-        type: 'hello',
-        token,
-        name: 'DSH Browser Extension',
-        version: VERSION,
-        userAgent: navigator.userAgent
-      }))
-    } catch (error) {
-      lastError = String(error?.message ?? error)
-    }
+    // The bridge speaks first with a challenge. Never send the raw token on
+    // this socket: a local process that squats the port would receive it.
   }
 
   ws.onmessage = (event) => {
@@ -136,20 +193,101 @@ function connect() {
     } catch {
       return
     }
-    if (message?.type === 'welcome') {
-      clearTimeout(welcomeTimer)
-      welcomeTimer = null
-      connected = true
-      retry = 0
-      lastError = null
-      lastConnectedAt = new Date().toISOString()
-      setBadge('ON', `Connected to DSH on port ${port}`)
-      void chrome.storage.local.set({ lastConnectedAt })
-      startKeepalive()
-      // Hydrate the chat transcript for any open side panel.
-      send({ type: 'chat/open' })
+    if (message?.type === 'challenge' && !connected) {
+      if (challengeNonce || typeof message.nonce !== 'string' || !message.nonce) return
+      if (message.protocolVersion !== PROTOCOL_VERSION) {
+        lastError = `The bridge speaks protocol ${message.protocolVersion}; this extension speaks ${PROTOCOL_VERSION}. Update both halves.`
+        try {
+          ws.close(1008, 'protocol mismatch')
+        } catch {
+          // Already gone.
+        }
+        return
+      }
+      challengeNonce = message.nonce
+      const nonce = message.nonce
+      void (async () => {
+        try {
+          const proof = await proofFor(token, 'client', nonce)
+          if (socket !== ws) return
+          ws.send(JSON.stringify({
+            type: 'hello',
+            proof,
+            name: 'DSH Browser Extension',
+            version: VERSION,
+            userAgent: navigator.userAgent
+          }))
+        } catch (error) {
+          lastError = String(error?.message ?? error)
+          try {
+            ws.close(1011, 'proof failed')
+          } catch {
+            // Already gone.
+          }
+        }
+      })()
       return
     }
+    if (message?.type === 'welcome' && !connected) {
+      if (!challengeNonce) {
+        lastError = 'The bridge answered before proving the pairing token.'
+        try {
+          ws.close(1008, 'unexpected welcome')
+        } catch {
+          // Already gone.
+        }
+        return
+      }
+      const nonce = challengeNonce
+      challengeNonce = null
+      void (async () => {
+        try {
+          const expected = await proofFor(token, 'server', nonce)
+          if (socket !== ws) return
+          if (message.protocolVersion !== PROTOCOL_VERSION || !proofMatches(expected, message.proof)) {
+            lastError = 'The bridge did not prove possession of the pairing token.'
+            try {
+              ws.close(1008, 'server authentication failed')
+            } catch {
+              // Already gone.
+            }
+            return
+          }
+          clearTimeout(welcomeTimer)
+          welcomeTimer = null
+          connected = true
+          allowEvaluate = message.allowEvaluate === true
+          retry = 0
+          lastError = null
+          lastConnectedAt = new Date().toISOString()
+          setBadge('ON', `Connected to DSH on port ${port}`)
+          void chrome.storage.local.set({ lastConnectedAt })
+          startKeepalive()
+          // The open socket + keepalive now holds the worker; no need to wake
+          // it every minute until the connection drops again.
+          clearReconnectAlarm()
+          // Confirm we verified the bridge's proof. The bridge does not set us
+          // as its peer (or dispatch commands) until this frame arrives.
+          try {
+            ws.send(JSON.stringify({ type: 'ready' }))
+          } catch {
+            // The socket is closing; onclose schedules a retry.
+          }
+          // Hydrate the chat transcript for any open side panel.
+          send({ type: 'chat/open' })
+        } catch (error) {
+          lastError = String(error?.message ?? error)
+          try {
+            ws.close(1011, 'proof failed')
+          } catch {
+            // Already gone.
+          }
+        }
+      })()
+      return
+    }
+    // Nothing else is trusted until the server has proved the pairing token.
+    if (!connected) return
     if (message?.type === 'ping') {
       try {
         ws.send(JSON.stringify({ type: 'pong', at: Date.now() }))
@@ -163,11 +301,15 @@ function connect() {
       chatEntries = Array.isArray(message.entries) ? message.entries : []
       chatStatus = message.status || 'idle'
       chatSessionId = message.sessionId ?? null
+      // The Host re-announces pending approvals in its snapshot, so a worker
+      // restart no longer loses cards that are still waiting for an answer.
+      if (Array.isArray(message.approvals)) pendingApprovals = message.approvals
       broadcastToPanels({
         type: 'chat/state',
         entries: chatEntries,
         status: chatStatus,
-        sessionId: chatSessionId
+        sessionId: chatSessionId,
+        approvals: pendingApprovals
       })
       return
     }
@@ -197,7 +339,13 @@ function connect() {
     }
     if (message?.type === 'chat/restored') {
       chatEntries = Array.isArray(message.entries) ? message.entries : []
-      broadcastToPanels({ type: 'chat/state', entries: chatEntries, status: chatStatus, sessionId: chatSessionId })
+      broadcastToPanels({
+        type: 'chat/state',
+        entries: chatEntries,
+        status: chatStatus,
+        sessionId: chatSessionId,
+        approvals: pendingApprovals
+      })
       return
     }
     if (message?.type === 'screenshot') {
@@ -211,6 +359,11 @@ function connect() {
       return
     }
     if (message?.type === 'chat/error') {
+      // Use the Host's authoritative status when it sends one: a failed cancel
+      // leaves the turn running, while a rejected send leaves it idle. Older
+      // Hosts omit the field, where idle is the safe default.
+      chatStatus = typeof message.status === 'string' ? message.status : 'idle'
+      broadcastToPanels({ type: 'chat/status', status: chatStatus })
       broadcastToPanels({ type: 'chat/error', message: message.message })
       return
     }
@@ -223,6 +376,7 @@ function connect() {
     if (socket !== ws) return
     socket = null
     connected = false
+    allowEvaluate = false
     clearTimeout(welcomeTimer)
     welcomeTimer = null
     stopKeepalive()
@@ -240,6 +394,9 @@ function connect() {
 
 function scheduleReconnect() {
   if (reconnectTimer) return
+  // A plain setTimeout dies with the worker; the alarm is what redials after
+  // Chrome suspends us, so keep one armed while we are disconnected.
+  ensureReconnectAlarm()
   const delay = Math.min(1000 * 2 ** retry, 30_000)
   retry = Math.min(retry + 1, 5)
   reconnectTimer = setTimeout(() => {
@@ -275,7 +432,8 @@ function stopKeepalive() {
 }
 
 function send(message) {
-  if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message))
+  if (!connected || !socket || socket.readyState !== WebSocket.OPEN) return
+  socket.send(JSON.stringify(message))
 }
 
 /** Deliver one internal message to every open extension page (the side panel). */
@@ -399,9 +557,15 @@ async function resolveTab(params) {
 }
 
 function assertInjectable(tab) {
-  const url = tab.url || ''
-  if (/^(chrome|edge|about|devtools|chrome-extension|view-source):/i.test(url)) {
-    throw new Error(`Chrome does not let extensions script this page (${url}). Open a normal http(s) page instead.`)
+  // During an uncommitted navigation Chrome reports an empty `url` with
+  // `pendingUrl` set; use the pending URL when present, and let an empty URL
+  // fall through so executeScript can attach or fail with its own error.
+  const url = tab.url || tab.pendingUrl || ''
+  // Keep the boundary the docs promise: http(s) pages only. `file:` becomes
+  // scriptable when the user grants the separate "Allow access to file URLs"
+  // toggle, which would otherwise expose local files over the bridge.
+  if (url && !/^https?:\/\//i.test(url)) {
+    throw new Error(`This extension only scripts http(s) pages (${url}). Open a normal page instead.`)
   }
 }
 
@@ -531,6 +695,7 @@ async function dispatch(method, params) {
     }
     case 'tab.screenshot': {
       const tab = await resolveTab(params)
+      assertInjectable(tab)
       await chrome.tabs.update(tab.id, { active: true })
       await chrome.windows.update(tab.windowId, { focused: true })
       await sleep(200)
@@ -539,6 +704,9 @@ async function dispatch(method, params) {
       return { dataUrl, url: current.url, title: current.title }
     }
     case 'tab.evaluate': {
+      if (!allowEvaluate) {
+        throw new Error('browser_evaluate is disabled. Enable `allowEvaluate: true` in the browser-companion config, then reconnect.')
+      }
       const tab = await resolveTab(params)
       assertInjectable(tab)
       const expression = String(params.expression || '')
@@ -616,7 +784,7 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
     return false
   }
   if (message?.type === 'chat/open') {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !connected) {
       reply({ ok: false, error: 'Not connected to DSH.' })
       return false
     }
@@ -646,11 +814,19 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
     return true
   }
   if (message?.type === 'chat/cancel') {
+    if (!connected) {
+      reply({ ok: false, error: 'Not connected to DSH.' })
+      return false
+    }
     send({ type: 'chat/cancel' })
     reply({ ok: true })
     return false
   }
   if (message?.type === 'chat/approval') {
+    if (!connected) {
+      reply({ ok: false, error: 'Not connected to DSH.' })
+      return false
+    }
     pendingApprovals = pendingApprovals.filter((entry) => entry.id !== message.id)
     send({ type: 'chat/approval', id: message.id, decision: message.decision === 'allow' ? 'allow' : 'deny' })
     reply({ ok: true })
@@ -658,12 +834,25 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
   }
   if (message?.type === 'chat/send') {
     const text = typeof message.text === 'string' ? message.text : ''
-    if (!text.trim()) {
+    const attachments = Array.isArray(message.attachments) ? message.attachments : []
+    if (!text.trim() && attachments.length === 0) {
       reply({ ok: false, error: 'Type a message first.' })
       return false
     }
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    // Bound the `chat/send` frame: the Host's limit is checked only after the
+    // frame arrives, so an unbounded draft plus near-cap attachments could
+    // exceed ws.js's 64 MiB cap and kill the socket before the Host replies.
+    if (text.trim().length > MAX_MESSAGE_CHARS) {
+      reply({ ok: false, error: `Messages are limited to ${MAX_MESSAGE_CHARS} characters.` })
+      return false
+    }
+    if (!socket || socket.readyState !== WebSocket.OPEN || !connected) {
       reply({ ok: false, error: 'Not connected to DSH.' })
+      return false
+    }
+    const oversize = attachmentError(attachments)
+    if (oversize) {
+      reply({ ok: false, error: oversize })
       return false
     }
     chatStatus = 'working'
@@ -671,9 +860,7 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
     send({
       type: 'chat/send',
       text,
-      ...(Array.isArray(message.attachments) && message.attachments.length > 0
-        ? { attachments: message.attachments }
-        : {})
+      ...(attachments.length > 0 ? { attachments } : {})
     })
     reply({ ok: true })
     return false
@@ -703,18 +890,28 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
   }
   if (message?.type === 'config') {
     const port = Number(message.port)
-    settings = {
-      token: typeof message.token === 'string' ? message.token.trim() : settings.token,
-      port: Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_PORT
-    }
-    // storage.onChanged is the single reconnect path; it fires right after this
-    // write and compares against the values applied above, so it does the work.
-    void chrome.storage.local.set({ token: settings.token, port: settings.port })
-    closeSocket()
-    retry = 0
-    connect()
-    reply({ ok: true })
-    return false
+    const provided = typeof message.token === 'string' ? message.token.trim() : ''
+    void (async () => {
+      // On a freshly woken worker, init() may not have loaded settings yet.
+      // Read the stored token rather than treating an empty `settings.token`
+      // as "clear the pairing".
+      const stored = provided || settings.token ? null : await chrome.storage.local.get(['token']).catch(() => ({}))
+      const token = provided || settings.token || String(stored?.token ?? '')
+      settings = {
+        // An empty token means "keep the saved one", which is what the popup
+        // placeholder promises and what makes a port-only change possible.
+        token,
+        port: Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_PORT
+      }
+      // Never overwrite a token we could not read; only persist one we have.
+      await chrome.storage.local.set({ port: settings.port, ...(token ? { token } : {}) }).catch(() => {})
+      closeSocket()
+      retry = 0
+      connect()
+      if (!settings.token) clearReconnectAlarm()
+      reply({ ok: true })
+    })()
+    return true
   }
   return false
 })
@@ -744,6 +941,37 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 })
 
+/**
+ * MV3 timers die with the worker, so a plain setTimeout backoff cannot redial
+ * after Chrome suspends us. A one-minute alarm is the durable wake-up path.
+ */
+function ensureReconnectAlarm() {
+  try {
+    void chrome.alarms?.create(RECONNECT_ALARM, { periodInMinutes: 1 })
+  } catch {
+    // Alarms are unavailable in a few test harnesses.
+  }
+}
+
+function clearReconnectAlarm() {
+  try {
+    void chrome.alarms?.clear(RECONNECT_ALARM)
+  } catch {
+    // Alarms are unavailable in a few test harnesses.
+  }
+}
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name !== RECONNECT_ALARM) return
+  // Connected or unpaired: retire the wake-up instead of waking forever.
+  if (!settings.token || socket) {
+    clearReconnectAlarm()
+    return
+  }
+  retry = 0
+  connect()
+})
+
 async function init() {
   const stored = await chrome.storage.local.get(['token', 'port', 'lastConnectedAt'])
   settings.token = typeof stored.token === 'string' ? stored.token : ''
@@ -763,11 +991,8 @@ async function init() {
   connect()
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  void init()
-})
-chrome.runtime.onStartup.addListener(() => {
-  void init()
-})
-
+// MV3 workers are suspended aggressively. Settings live in storage, so reload
+// them and dial on every worker start; the alarms wake-up above is what
+// guarantees a start happens after Chrome suspends the worker while DSH is
+// still down.
 void init()

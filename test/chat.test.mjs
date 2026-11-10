@@ -2,7 +2,7 @@
  * Unit tests for the Host chat mapping and session wiring. No Harness, no model:
  * a fake Context supplies the session controller and the event bus.
  */
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createChat, mapSessionEvent } from '../lib/chat.js'
@@ -85,8 +85,14 @@ const prompts = []
 const created = []
 const cancelled = []
 const paged = []
+const defaultRestrictedFilters = []
+const defaultAgentStub = {
+  id: 'session-1',
+  ctx: { tools: { restrict(filter) { defaultRestrictedFilters.push(filter); return () => {} } } }
+}
 const ctx = {
   get(name) {
+    if (name === 'agents') return { get: () => defaultAgentStub }
     if (name === 'sessionQuery') {
       return {
         async observeSession() {
@@ -211,8 +217,10 @@ check('other agents are delegated', delegated === true && foreign === 'unavailab
 const pendingApproval = approvalListeners[0]({ agent: { id: 'session-1' }, toolName: 'bash', reason: 'Run a command?' }, async () => 'unavailable')
 const asked = approvalEvents.find((message) => message.type === 'chat/approval')
 check('approval request reaches the panel', Boolean(asked) && asked.approval.toolName === 'bash' && asked.approval.reason === 'Run a command?')
+check('snapshot carries pending approvals', chat.snapshot().approvals.some((approval) => approval.id === asked.approval.id))
 check('approval is answerable', chat.answerApproval(asked.approval.id, 'allow') === true)
 check('allowed decision becomes allowed-once', (await pendingApproval) === 'allowed-once')
+check('answered approvals leave the snapshot', chat.snapshot().approvals.length === 0)
 check('unknown approval ids are ignored', chat.answerApproval('nope', 'allow') === false)
 
 // --- history backfill -------------------------------------------------------
@@ -264,6 +272,120 @@ await openChat.send('hi')
 check('open policy restricts nothing', restrictedFilters.length === 0)
 openChat.dispose()
 
+// --- restored-session tool policy -------------------------------------------
+const restoredFilters = []
+const restoredPrompts = []
+const restoredAgentStub = {
+  id: 'session-1',
+  ctx: { tools: { restrict(filter) { restoredFilters.push(filter); return () => {} } } }
+}
+const restoredPolicyCtx = {
+  get(name) {
+    if (name === 'agents') return { get: () => undefined }
+    if (name === 'sessionController') {
+      return {
+        async resolveAgent() {
+          return { agent: restoredAgentStub }
+        },
+        async prompt(request) {
+          restoredPrompts.push(request)
+          return { accepted: true }
+        }
+      }
+    }
+    if (name === 'sessionQuery') {
+      return { async observeSession() { return { events: [], [Symbol.dispose]() {} } } }
+    }
+    return undefined
+  },
+  on() { return () => {} }
+}
+const restoredPolicyChat = createChat({ ctx: restoredPolicyCtx, cwd: '/tmp', toolPolicy: 'no-shell', attachmentDir: filesDir })
+await restoredPolicyChat.prepare()
+const persistedSessionId = restoredPolicyChat.snapshot().sessionId
+await restoredPolicyChat.send('after a restart')
+const restoredDenied = restoredFilters.map((filter) => filter.deny?.[0])
+check(
+  'restored sessions resolve the agent before applying the policy',
+  Boolean(persistedSessionId) &&
+    restoredDenied.includes('bash') &&
+    restoredDenied.includes('write'),
+  JSON.stringify(restoredDenied)
+)
+check('the restored session is prompted only after the policy is applied', restoredPrompts.length === 1 && restoredPrompts[0].sessionId === persistedSessionId)
+restoredPolicyChat.dispose()
+
+// --- policy fails closed -----------------------------------------------------
+const failClosedPrompts = []
+const failClosedCtx = {
+  get(name) {
+    if (name === 'agents') return { get: () => undefined }
+    if (name === 'sessionController') {
+      return {
+        async resolveAgent() { return { error: new Error('session/not-found') } },
+        async prompt(request) { failClosedPrompts.push(request); return { accepted: true } }
+      }
+    }
+    if (name === 'sessionQuery') {
+      return { async observeSession() { return { events: [], [Symbol.dispose]() {} } } }
+    }
+    return undefined
+  },
+  on() { return () => {} }
+}
+const failClosedChat = createChat({ ctx: failClosedCtx, cwd: '/tmp', toolPolicy: 'no-shell', attachmentDir: filesDir })
+await failClosedChat.prepare()
+const failClosedError = await failClosedChat.send('hi').then(() => '', (error) => error.message)
+check('send fails closed when the policy cannot be applied', /Cannot apply tool policy/.test(failClosedError) && failClosedPrompts.length === 0, failClosedError)
+failClosedChat.dispose()
+
+// --- mounted tools that refuse restriction ----------------------------------
+const stubbornPrompts = []
+const stubbornAgent = {
+  id: 'session-stubborn',
+  ctx: {
+    tools: {
+      get(name) { return { name } },
+      restrict() { throw new Error('restriction unsupported') }
+    }
+  }
+}
+const stubbornCtx = {
+  get(name) {
+    if (name === 'agents') return { get: () => stubbornAgent }
+    if (name === 'sessionController') {
+      return {
+        async create() { return { sessionId: 'session-stubborn' } },
+        async prompt(request) { stubbornPrompts.push(request); return { accepted: true } }
+      }
+    }
+    return undefined
+  },
+  on() { return () => {} }
+}
+const stubbornChat = createChat({ ctx: stubbornCtx, cwd: '/tmp', toolPolicy: 'no-shell', attachmentDir: filesDir })
+const stubbornError = await stubbornChat.send('hi').then(() => '', (error) => error.message)
+check('mounted tools that cannot be restricted fail closed', /mounted tool\(s\)/.test(stubbornError) && stubbornPrompts.length === 0, stubbornError)
+stubbornChat.dispose()
+
+// --- attachment totals ------------------------------------------------------
+const cappedFilesDir = await mkdtemp(join(tmpdir(), 'companion-capped-'))
+const chunk = Buffer.alloc(6, 1).toString('base64')
+const totalCappedChat = createChat({
+  ctx: policyCtx,
+  cwd: '/tmp',
+  toolPolicy: 'open',
+  attachmentDir: cappedFilesDir,
+  maxTotalAttachmentBytes: 8
+})
+const totalError = await totalCappedChat.send('', [
+  { name: 'a.bin', mediaType: 'application/octet-stream', data: chunk },
+  { name: 'b.bin', mediaType: 'application/octet-stream', data: chunk }
+]).then(() => '', (error) => error.message)
+check('aggregate attachment bytes are capped', /Attachments are limited to/.test(totalError), totalError)
+const orphaned = await readdir(cappedFilesDir).catch(() => [])
+check('a rejected attachment batch writes no files', orphaned.length === 0, JSON.stringify(orphaned))
+totalCappedChat.dispose()
 
 chat.dispose()
 check('dispose removes the session listener', listeners.length === 0)

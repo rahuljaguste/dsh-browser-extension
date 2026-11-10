@@ -225,6 +225,9 @@
       if (!el) {
         throw new Error(`Ref ${target.ref} is not available. Take a new browser_snapshot; refs are rebuilt by every snapshot.`)
       }
+      if (!el.isConnected) {
+        throw new Error(`Ref ${target.ref} is stale: the element is no longer attached to the page. Take a new browser_snapshot.`)
+      }
       return el
     }
     if (target && target.selector) {
@@ -280,7 +283,12 @@
     }
 
     if (args.submit) submitFrom(el)
-    return { ok: true, matched: summarize(el), value: 'value' in el ? el.value : el.textContent, url: location.href }
+    const result = { ok: true, matched: summarize(el), url: location.href }
+    // Snapshots redact password fields; the type result must not undo that by
+    // echoing the saved value back into the transcript.
+    const isPassword = tagOf(el) === 'input' && el.type === 'password'
+    if (!isPassword) result.value = 'value' in el ? el.value : el.textContent
+    return result
   }
 
   function submitFrom(el) {
@@ -307,6 +315,24 @@
     return { ok: true, key, url: location.href }
   }
 
+  /** Wait until a smooth scroll stops moving, so the reported position is final. */
+  async function waitForScrollToSettle(timeoutMs = 1500) {
+    const deadline = Date.now() + timeoutMs
+    let last = Math.round(window.scrollY)
+    let stable = 0
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      const current = Math.round(window.scrollY)
+      if (current === last) {
+        stable += 1
+        if (stable >= 2) return
+      } else {
+        stable = 0
+        last = current
+      }
+    }
+  }
+
   async function scroll(args) {
     const amount = Number.isInteger(args.amount) ? args.amount : 600
     const direction = args.direction || 'down'
@@ -315,7 +341,7 @@
     else if (direction === 'bottom') window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })
     else if (direction === 'up') window.scrollBy({ top: -amount, behavior: 'smooth' })
     else window.scrollBy({ top: amount, behavior: 'smooth' })
-    await new Promise((resolve) => setTimeout(resolve, 350))
+    await waitForScrollToSettle()
     return {
       ok: true,
       direction,

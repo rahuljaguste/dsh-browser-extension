@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.9.0
+
+- Security: the sidebar tool policy now resolves restored Sessions through
+  `sessionController.resolveAgent()` before prompting; if the policy cannot be
+  applied the send fails closed instead of running with the full profile.
+- Security: pairing is a nonce/HMAC challenge-response. The raw token never
+  crosses the socket, the extension verifies the bridge's proof before trusting
+  it, commands are ignored until both proofs succeed, and the Host dispatches
+  nothing until the extension confirms with `ready`. Explicit config tokens
+  must be at least 16 characters. Protocol version is now 2 — update the Host
+  plugin and the extension together.
+- Security: the bridge no longer shifts to the next port when the configured one
+  is busy; it reports an actionable error. Silent fallback let a local squatter
+  on the configured port relay the handshake to the real bridge.
+- Security: the extension enforces `allowEvaluate` from the authenticated
+  welcome; `tab.evaluate` no longer runs for a peer that skips the Host tool.
+- Security: `browser_type` no longer returns password-field values; scripting is
+  limited to http(s) pages, closing the `file://` toggle gap.
+- Fix: attachments are capped in aggregate (40 MB) on both sides, below the
+  bridge's 64 MiB frame limit, instead of silently closing the socket.
+- Fix: the MV3 worker reloads settings and reconnects on every worker start and
+  uses a one-minute alarm, so it can redial after Chrome suspends it.
+- Fix: `chat/error` restores the composer instead of leaving the panel stuck on
+  "Working"; pending approvals are included in snapshots and survive a worker
+  restart; stale element refs now fail instead of reporting a false success.
+- Fix: the panel keeps its scroll position while reading history; a port-only
+  popup save no longer requires re-pasting the token; smooth scrolling reports
+  the settled position.
+- Fix: WebSocket frames arriving with the upgrade `head` are no longer dropped;
+  blank YAML numbers no longer coerce to zero.
+
 ## 0.8.0
 
 - Renamed the repository and package to `dsh-browser-extension`; the Chrome

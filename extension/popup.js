@@ -4,6 +4,7 @@ const statusLine = document.getElementById('status')
 const dot = document.getElementById('dot')
 
 let loaded = false
+let hasToken = false
 
 function render(status) {
   dot.classList.toggle('on', Boolean(status.connected))
@@ -34,6 +35,7 @@ async function refresh() {
       return
     }
     render(status)
+    hasToken = Boolean(status.hasToken)
     if (!loaded) {
       portInput.value = status.port
       loaded = true
@@ -46,7 +48,7 @@ async function refresh() {
 document.getElementById('save').addEventListener('click', async () => {
   const port = Number(portInput.value)
   const token = tokenInput.value.trim()
-  if (!token) {
+  if (!token && !hasToken) {
     statusLine.textContent = 'Paste the pairing token from browser_status first.'
     return
   }
@@ -54,7 +56,10 @@ document.getElementById('save').addEventListener('click', async () => {
     statusLine.textContent = 'The port must be a whole number between 1 and 65535.'
     return
   }
-  await chrome.runtime.sendMessage({ type: 'config', token, port })
+  // An empty token means "keep the saved one" (the worker treats it that way),
+  // so a port-only change does not require pasting the token again.
+  await chrome.runtime.sendMessage({ type: 'config', port, ...(token ? { token } : {}) })
+  if (token) hasToken = true
   tokenInput.value = ''
   tokenInput.placeholder = 'Saved — leave blank to keep the current token'
   setTimeout(refresh, 400)

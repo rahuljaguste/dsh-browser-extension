@@ -4,6 +4,7 @@
  *
  * Run: node test/e2e.mjs [--headed]
  */
+import { createHmac } from 'node:crypto'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
@@ -42,16 +43,33 @@ async function waitUntil(predicate, timeoutMs, label) {
   throw new Error(`Timed out waiting for ${label}`)
 }
 
-const bridge = createBridge({ port: 0, home: await mkdtemp(join(tmpdir(), 'dsh-companion-home-')), log: () => {} })
+const bridge = createBridge({
+  port: 0,
+  home: await mkdtemp(join(tmpdir(), 'dsh-companion-home-')),
+  log: () => {},
+  allowEvaluate: true
+})
 await bridge.start()
 console.log(`bridge on port ${bridge.port}`)
 
 // --- auth: a bogus token must be refused ------------------------------------
 console.log('\nauth')
 const bogus = new WebSocket(`ws://127.0.0.1:${bridge.port}/`)
+let challengeSeen = false
 const bogusResult = await new Promise((resolve) => {
   const timer = setTimeout(() => resolve('timeout'), 4000)
-  bogus.onopen = () => bogus.send(JSON.stringify({ type: 'hello', token: 'not-the-token', name: 'rogue', version: '0' }))
+  bogus.onmessage = (event) => {
+    let message
+    try {
+      message = JSON.parse(String(event.data))
+    } catch {
+      return
+    }
+    if (message?.type !== 'challenge') return
+    challengeSeen = true
+    const proof = createHmac('sha256', 'not-the-token').update(`client:${message.nonce}`).digest('base64url')
+    bogus.send(JSON.stringify({ type: 'hello', proof, name: 'rogue', version: '0' }))
+  }
   bogus.onclose = (event) => {
     clearTimeout(timer)
     resolve(`closed:${event.code}`)
@@ -59,7 +77,8 @@ const bogusResult = await new Promise((resolve) => {
   bogus.onerror = () => {}
 })
 bogus.close()
-check('wrong pairing token is rejected', /closed:1008/.test(bogusResult), bogusResult)
+check('the server sends the challenge before the client speaks', challengeSeen)
+check('a wrong pairing proof is rejected', /closed:1008/.test(bogusResult), bogusResult)
 check('bridge does not consider the rogue client connected', bridge.status().connected === false)
 
 // --- Chrome + extension ------------------------------------------------------
@@ -132,6 +151,13 @@ try {
   await call('browser_type', { ref: nameRef, text: 'Ada' })
   const typed = await call('browser_evaluate', { expression: 'document.getElementById("name").value' })
   check('browser_type writes the value', typed.value === 'Ada', JSON.stringify(typed))
+
+  const secretRef = /textbox "Secret" \[ref=(e\d+)\]/.exec(snapshot.text)?.[1]
+  check('snapshot assigns a ref to the password field', Boolean(secretRef), snapshot.text.slice(0, 400))
+  const secretResult = await call('browser_type', { ref: secretRef, text: '', clear: false })
+  check('browser_type does not echo password values', secretResult.value === undefined && secretResult.ok === true, JSON.stringify(secretResult))
+  const secretValue = await call('browser_evaluate', { expression: 'document.getElementById("secret").value' })
+  check('the password field still holds its value', secretValue.value === 'hunter2', JSON.stringify(secretValue))
 
   await call('browser_click', { ref: greetRef })
   const read = await call('browser_read')
@@ -259,6 +285,18 @@ try {
   check('stop sends a cancel to the Host', Boolean(cancelArrived))
   bridge.broadcast({ type: 'chat/status', status: 'idle' })
 
+  // A rejected send produces no turn state; the panel must restore the composer.
+  bridge.broadcast({ type: 'chat/status', status: 'working' })
+  const workingVisible = await panel.waitForSelector('#stop:not([hidden])', { timeout: 5000 }).then(() => true).catch(() => false)
+  check('stop appears before the error', workingVisible)
+  bridge.broadcast({ type: 'chat/error', message: 'message rejected' })
+  const composerRecovered = await panel.waitForFunction(() => {
+    const send = document.getElementById('send')
+    const stop = document.getElementById('stop')
+    return Boolean(send && !send.hidden && stop && stop.hidden)
+  }, null, { timeout: 5000 }).then(() => true).catch(() => false)
+  check('chat/error restores the composer', composerRecovered)
+
   // A screenshot frame from the Host (what browser_screenshot broadcasts).
   const onePixelPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
   bridge.broadcast({ type: 'screenshot', path: '/tmp/shot-test.png', dataUrl: onePixelPng, at: new Date().toISOString() })
@@ -280,6 +318,22 @@ try {
   if (fixturePage) await fixturePage.bringToFront()
   const captured = await panel.evaluate(async () => await chrome.runtime.sendMessage({ type: 'capture' }))
   check('panel-initiated capture returns a PNG', captured?.ok === true && String(captured.dataUrl).startsWith('data:image/png'), JSON.stringify(captured).slice(0, 120))
+
+  // The Host re-announces pending approvals in its snapshot so a worker restart
+  // does not lose a card that is still waiting for an answer.
+  bridge.broadcast({
+    type: 'chat/state',
+    sessionId: 'session-test',
+    status: 'idle',
+    entries: [],
+    approvals: [{ id: 'ap-restored', toolName: 'read', reason: 'Pending across a restart?' }]
+  })
+  const restoredCard = await panel.waitForFunction(
+    () => [...document.querySelectorAll('.approval-tool')].some((node) => node.textContent === 'read'),
+    null,
+    { timeout: 5000 }
+  ).then(() => true).catch(() => false)
+  check('approval cards are restored from a state snapshot', restoredCard)
   await panel.close()
 
   const closed = await call('browser_close', { tabId: opened.id })

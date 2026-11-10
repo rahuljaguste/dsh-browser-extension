@@ -16,6 +16,8 @@ const fileInput = document.getElementById('file')
 
 const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024
 const MAX_ATTACHMENTS = 6
+// Must stay under the bridge's 64 MiB frame cap after base64 inflation.
+const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024
 const MAX_SHOTS = 4
 
 let entries = []
@@ -141,6 +143,9 @@ function messageNode(entry) {
 
 function renderTranscript() {
   const nearBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80
+  // Clearing the DOM resets scrollTop to 0. Keep the reader's place when they
+  // are reading history; appended rows below cannot shift it.
+  const previousScrollTop = transcript.scrollTop
   transcript.textContent = ''
   const display = toDisplay(entries)
   if (display.length === 0 && shots.length === 0) {
@@ -165,6 +170,7 @@ function renderTranscript() {
     transcript.scrollTop = transcript.scrollHeight
     jumpButton.hidden = true
   } else {
+    transcript.scrollTop = previousScrollTop
     jumpButton.hidden = false
   }
 }
@@ -229,6 +235,10 @@ function readAsDataUrl(file) {
   })
 }
 
+function pendingBytes() {
+  return pending.reduce((total, attachment) => total + (attachment.size ?? 0), 0)
+}
+
 async function addFiles(fileList) {
   for (const file of [...(fileList ?? [])]) {
     if (pending.length >= MAX_ATTACHMENTS) {
@@ -239,6 +249,10 @@ async function addFiles(fileList) {
       showError(`${file.name} is larger than 12 MB.`)
       continue
     }
+    if (pendingBytes() + file.size > MAX_TOTAL_ATTACHMENT_BYTES) {
+      showError('Attachments are limited to 40 MB per message.')
+      continue
+    }
     try {
       const dataUrl = await readAsDataUrl(file)
       const comma = dataUrl.indexOf(',')
@@ -246,6 +260,7 @@ async function addFiles(fileList) {
       pending.push({
         name: file.name || 'attachment',
         mediaType: file.type || 'application/octet-stream',
+        size: file.size,
         data: dataUrl.slice(comma + 1),
         dataUrl
       })
@@ -306,6 +321,10 @@ form.addEventListener('submit', async (event) => {
   const text = input.value.trim()
   if (!text && pending.length === 0) return
   showError(null)
+  if (pendingBytes() > MAX_TOTAL_ATTACHMENT_BYTES) {
+    showError('Attachments are limited to 40 MB per message.')
+    return
+  }
   const attachments = pending.map((attachment) => ({
     name: attachment.name,
     mediaType: attachment.mediaType,
@@ -406,6 +425,12 @@ chrome.runtime.onMessage.addListener((message) => {
     disarmReplyWatchdog()
     entries = Array.isArray(message.entries) ? message.entries : []
     agentStatus = message.status || 'idle'
+    // Approvals survive a worker restart because the Host includes them in
+    // every snapshot; replacing the list keeps cards from leaking across turns.
+    if (Array.isArray(message.approvals)) {
+      approvals = message.approvals
+      renderApprovals()
+    }
     renderTranscript()
     renderStatus()
     return false
@@ -445,7 +470,11 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'chat/error') {
     disarmReplyWatchdog()
     previewQueue = []
+    // Use the Host's status when present: a rejected send is idle, but a
+    // failed cancel leaves the turn running and the user needs Stop back.
+    agentStatus = typeof message.status === 'string' ? message.status : 'idle'
     showError(message.message)
+    renderStatus()
     return false
   }
   return false

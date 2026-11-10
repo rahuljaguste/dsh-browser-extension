@@ -19,16 +19,29 @@ export const name = 'browser-companion'
 /** Host services this plugin consumes. */
 export const inject = ['tools']
 
+/** A blank YAML value (`port:`) coerces to 0; only accept real numbers. */
+function numberConfig(value, fallback) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
 /**
  * @param {import('@deepseek-ai/cordis').Context} ctx
  * @param {Record<string, unknown>} [config]
  */
 export function apply(ctx, config = {}) {
-  const port = Number.isFinite(Number(config.port)) ? Number(config.port) : 8787
+  const port = numberConfig(config.port, 8787)
+  const commandTimeoutMs = numberConfig(config.commandTimeoutMs, null)
+  const allowEvaluate = config.allowEvaluate === true
   const bridge = createBridge({
     port,
     ...(typeof config.token === 'string' && config.token.length > 0 ? { token: config.token } : {}),
-    ...(Number.isFinite(Number(config.commandTimeoutMs)) ? { commandTimeoutMs: Number(config.commandTimeoutMs) } : {})
+    ...(commandTimeoutMs !== null ? { commandTimeoutMs } : {}),
+    allowEvaluate
   })
 
   ctx.effect(() => {
@@ -66,11 +79,11 @@ export function apply(ctx, config = {}) {
     }
     await chat.send(message.text, message.attachments)
     return chat.snapshot()
-  })
+  }, () => chat.snapshot().status)
 
   ctx.effect(() => {
     const disposers = registerBrowserTools(ctx, bridge, {
-      allowEvaluate: config.allowEvaluate === true,
+      allowEvaluate,
       ...(typeof config.screenshotDir === 'string' ? { screenshotDir: config.screenshotDir } : {})
     })
     return () => {

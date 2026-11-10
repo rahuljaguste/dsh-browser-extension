@@ -6,8 +6,6 @@ A Chrome companion for [DeepSeek Harness](https://github.com/deepseek-ai/deepsee
 your agent gets real `browser_*` tools over the tabs you are already logged in to,
 and a side panel where you can talk to it while you browse.
 
-![The side panel driving a real Harness](docs/panel.png)
-
 No headless profile, no separate cookie jar, no cloud relay: a loopback socket
 between a DSH plugin and a Chrome extension.
 
@@ -82,9 +80,12 @@ e2e suite uses.
 `8787`) and the pairing token. Open the extension popup, paste both, **Save &
 connect**. The badge shows `ON`.
 
-The token is 192 bits, stored owner-only at
-`<DSH_HOME>/storages/browser-companion.json`, and compared timing-safely. It is a
-loopback pairing secret, not an account credential.
+The generated token is 192 bits, stored owner-only at
+`<DSH_HOME>/storages/browser-companion.json`. Pairing uses a per-connection
+nonce/HMAC challenge-response, so the raw token never crosses the socket. It is
+a loopback pairing secret, not an account credential. An explicit `config.token`
+must be at least 16 characters. The Host plugin and extension must run the same
+protocol version (0.9.0 uses v2); update both halves together.
 
 ## Using it
 
@@ -164,7 +165,7 @@ privileged extension — are in [SECURITY.md](SECURITY.md).
 ```sh
 npm install
 npm run check        # syntax-check every source file
-npm run test:unit    # chat + tool tests, no browser
+npm run test:unit    # chat, bridge + tool tests, no browser
 npm run test:e2e     # real Chromium + real extension + real bridge
 ```
 
@@ -181,10 +182,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for layout, style and PR expectations.
 ## Limitations
 
 - Screenshots are viewport-only (`captureVisibleTab`); scroll and stitch for more.
-- `chrome://` pages, the Web Store, other extensions' pages and iframes are out of
-  scope.
+- `chrome://`, `file://`, the Web Store, other extensions' pages and iframes are
+  out of scope.
 - One browser at a time; a second connection replaces the first.
 - `browser_press` dispatches synthetic key events, which some handlers ignore.
+- `browser_evaluate` evaluates an expression in the page's main world, so a page
+  CSP that forbids `eval` also refuses it.
 - Assistant replies are per-step, not streamed token by token.
 - Single thread per profile; no model picker.
 

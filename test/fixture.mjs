@@ -11,6 +11,8 @@ const PAGE = `<!doctype html>
     <h1>Companion Fixture</h1>
     <label for="name">Name</label>
     <input id="name" placeholder="Your name" />
+    <label for="secret">Secret</label>
+    <input id="secret" type="password" value="hunter2" />
     <button id="greet">Greet</button>
     <div id="out"></div>
     <p><a id="next" href="/second">Second page</a></p>

@@ -24,7 +24,7 @@ Extension code reloads with **Reload** on `chrome://extensions`.
 
 ```sh
 npm run check      # syntax check every source file
-npm run test:unit  # chat + tool tests, no browser
+npm run test:unit  # chat, bridge + tool tests, no browser
 npm run test:e2e   # real Chromium + real extension + real bridge
 ```
 

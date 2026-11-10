@@ -1,6 +1,6 @@
 {
   "name": "dsh-browser-extension",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "description": "Chrome companion for DeepSeek Harness: drive your real browser tabs, and chat with the agent from a side panel.",
   "exports": {
@@ -26,7 +26,7 @@
   "scripts": {
     "check": "node --check index.js && node --check lib/ws.js && node --check lib/bridge.js && node --check lib/chat.js && node --check lib/tools.js && node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js && node --check extension/sidepanel.js",
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "node test/chat.test.mjs && node test/tools.test.mjs",
+    "test:unit": "node test/chat.test.mjs && node test/bridge.test.mjs && node test/tools.test.mjs",
     "test:e2e": "node test/e2e.mjs"
   },
   "license": "MIT",
@@ -41,7 +41,7 @@
   "engines": {
     "node": ">=22"
   },
-  "author": "Rahul <868090+rahuljaguste@users.noreply.github.com>",
+  "author": "dsh-browser-extension contributors",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rahuljaguste/dsh-browser-extension.git"
