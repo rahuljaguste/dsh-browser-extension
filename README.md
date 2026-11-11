@@ -9,6 +9,8 @@ and a side panel where you can talk to it while you browse.
 No headless profile, no separate cookie jar, no cloud relay: a loopback socket
 between a DSH plugin and a Chrome extension.
 
+![The side panel driving a page](docs/panel.png)
+
 ## What you get
 
 - **15 browser tools** — navigate, snapshot, click, type, press, scroll, read,
@@ -58,34 +60,98 @@ screenshots and approvals over that one socket.
 
 ## Install
 
-**1. The plugin.** Install from the checkout into your profile:
+Not on the Chrome Web Store or npm yet: you install from source. There are two
+halves — the Host plugin and the Chrome extension — and **they must be the same
+version**, because pairing speaks a versioned protocol (0.9.0 uses v2).
+
+### 1. Clone
+
+```sh
+git clone https://github.com/rahuljaguste/dsh-browser-extension
+cd dsh-browser-extension
+```
+
+### 2. Install the Host plugin into a profile
+
+If `dsh` is on your `PATH` (CLI installs):
+
+```sh
+dsh plugin --profile <profile> add link:"$PWD"
+```
+
+If you use the macOS desktop app, its CLI ships inside the bundle:
 
 ```sh
 DSH="/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh"
 "$DSH" plugin --profile <profile> add link:"$PWD"
 ```
 
-`dsh plugin add` records the dependency, links it into the profile, and appends the
-bundle to `dsh.profile.bundles` because the package declares `dsh.bundle`. Profile
-layers compose at boot, so **restart the app** after installing or upgrading.
+Use the profile you actually run — `desktop` for the app, or `web`. `plugin add`
+records the dependency, links the checkout into the profile, and appends the
+bundle to `dsh.profile.bundles` because the package declares `dsh.bundle`.
+Profile layers compose at boot, so **restart the app** afterwards.
 
-**2. The extension.** Open `chrome://extensions`, enable **Developer mode**,
-choose **Load unpacked**, and select `extension/`.
+### 3. Load the extension
+
+Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**,
+and select the `extension/` folder from the checkout. Pin it from the puzzle-piece
+menu, otherwise it hides in the toolbar overflow.
 
 Branded Chrome 137+ ignores `--load-extension`; unpacked loading is the supported
-path. Chrome for Testing and Chromium still accept the flag, which is what the
-e2e suite uses.
+path. Chrome for Testing and Chromium still accept the flag, which is what the e2e
+suite uses.
 
-**3. Pair.** Ask the agent for `browser_status` — it returns the port (default
+Chrome will warn that the extension can read and change all data on sites you
+visit (`<all_urls>`). That is what scripting and capturing the tab you point it at
+requires; [SECURITY.md](SECURITY.md) explains exactly what it can and cannot reach.
+
+### 4. Pair
+
+Ask the agent in DSH to run `browser_status`. It returns the port (default
 `8787`) and the pairing token. Open the extension popup, paste both, **Save &
-connect**. The badge shows `ON`.
+connect** — the badge turns `ON`.
 
 The generated token is 192 bits, stored owner-only at
-`<DSH_HOME>/storages/browser-companion.json`. Pairing uses a per-connection
-nonce/HMAC challenge-response, so the raw token never crosses the socket. It is
-a loopback pairing secret, not an account credential. An explicit `config.token`
-must be at least 16 characters. The Host plugin and extension must run the same
-protocol version (0.9.0 uses v2); update both halves together.
+`<DSH_HOME>/storages/browser-companion.json`. Pairing is a per-connection
+nonce/HMAC exchange, so the raw token never crosses the socket. It is a loopback
+pairing secret, not an account credential; an explicit `config.token` must be at
+least 16 characters.
+
+### 5. Verify
+
+```sh
+curl -s http://127.0.0.1:8787/state
+# {"bridge":"listening","connected":true,... "protocolVersion":2}
+```
+
+Then ask the agent: *"open https://example.com and summarise it"*. Tool rows
+appear in the side panel as it works. If `connected` stays `false`, see
+[Troubleshooting](#troubleshooting).
+
+### Updating
+
+```sh
+cd dsh-browser-extension && git pull
+```
+
+Restart the DSH app, then click **Reload** on the extension card. Updating one
+half alone breaks pairing with a protocol-mismatch or `1008` close.
+
+### Uninstall
+
+```sh
+dsh plugin --profile <profile> remove dsh-browser-extension
+```
+
+Then **Remove** the extension in `chrome://extensions` and, if you want the saved
+state gone, delete `<DSH_HOME>/browser-companion` (chat id, attachments,
+screenshots).
+
+### Moving the checkout
+
+Chrome keys an unpacked extension to its absolute path. Moving the folder changes
+the extension ID, discards its stored pairing token, and can make Chrome drop the
+extension entirely. If you move it: **Load unpacked** again and re-pair.
 
 ## Using it
 
@@ -151,6 +217,21 @@ is a prompt-injection surface, so it is restricted per Session through
 `no-shell` keeps `read`, so attached files and screenshot paths still work;
 `browser-only` gives up that ability to close the "read any file by path" route.
 Denials apply to the sidebar Session only, never to the main chat.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Popup: *bridge speaks protocol N* | Host and extension versions differ | Update both halves, restart the app, reload the extension |
+| Popup: **close 1008** | Token does not match | Re-copy it from `browser_status` |
+| Popup: **close 1006** / cannot reach `ws://127.0.0.1:8787` | App not running, or port occupied | Start the app; check `port` in the config and the popup |
+| `/state` shows `"error": "Port 8787 is already in use"` | Another process owns the port | Change `port` in `cordis.patch.yml` and in the popup |
+| Extension vanished or "Could not load extension" | The checkout moved | Load unpacked again from the new path, re-pair |
+| Panel: *The Harness did not answer* | Host predates the chat channel | Restart the app, then reload the extension |
+| Tools missing in an open chat | Profile loaded before the plugin | Restart the app and start a new chat |
+
+Service-worker console (the only place extension stack traces appear):
+`chrome://extensions` → DSH Browser Extension → **service worker**.
 
 ## Security
 
