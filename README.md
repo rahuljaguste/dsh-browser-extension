@@ -145,7 +145,9 @@ dsh plugin --profile <profile> remove dsh-browser-extension
 
 Then **Remove** the extension in `chrome://extensions` and, if you want the saved
 state gone, delete `<DSH_HOME>/browser-companion` (chat id, attachments,
-screenshots).
+screenshots) and `<DSH_HOME>/storages/browser-companion.json` (pairing token).
+Custom `screenshotDir` and `attachmentDir` locations live outside that directory;
+remove them too if you set them.
 
 ### Moving the checkout
 
@@ -223,7 +225,7 @@ Denials apply to the sidebar Session only, never to the main chat.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Popup: *bridge speaks protocol N* | Host and extension versions differ | Update both halves, restart the app, reload the extension |
-| Popup: **close 1008** | Token does not match | Re-copy it from `browser_status` |
+| Popup: **close 1008** | Token or protocol mismatch | Re-copy it from `browser_status`; update both halves if versions differ |
 | Popup: **close 1006** / cannot reach `ws://127.0.0.1:8787` | App not running, or port occupied | Start the app; check `port` in the config and the popup |
 | `/state` shows `"error": "Port 8787 is already in use"` | Another process owns the port | Change `port` in `cordis.patch.yml` and in the popup |
 | Extension vanished or "Could not load extension" | The checkout moved | Load unpacked again from the new path, re-pair |
