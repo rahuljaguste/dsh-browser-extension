@@ -19,6 +19,7 @@ function check(name, condition, detail = '') {
 const dir = await mkdtemp(join(tmpdir(), 'companion-tools-'))
 const shots = join(dir, 'shots')
 const calls = []
+const offers = []
 const broadcasts = []
 const onePixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
@@ -26,8 +27,13 @@ const bridge = {
   async call(method, params) {
     calls.push({ method, params })
     if (method === 'tab.screenshot') return { dataUrl: onePixel, url: 'https://example.com/', title: 'Example' }
+    if (method === 'file.download') return { downloadId: 7 }
     if (method === 'tabs.list') return [{ id: 1, title: 'Example', url: 'https://example.com/', active: true }]
     return { ok: true }
+  },
+  offerFile({ filename, mimeType, data }) {
+    offers.push({ filename, mimeType, data })
+    return { id: 'f1', filename, url: 'http://127.0.0.1:8787/download/abcdefghijklmnop', bytes: data.length }
   },
   broadcast(message) {
     broadcasts.push(message)
@@ -68,6 +74,16 @@ check('status carries the pairing token only', typeof status.token === 'string' 
 
 await call('browser_tabs')
 check('tabs call reaches the bridge', calls.some((entry) => entry.method === 'tabs.list'))
+
+const saved = await call('browser_save_file', { filename: 'report.md', content: '# Hello' })
+check('save writes UTF-8 content', offers[0]?.data.toString('utf8') === '# Hello')
+check('save reports the download', saved.downloaded === true && saved.downloadId === 7 && saved.filename === 'report.md')
+
+await call('browser_save_file', { filename: 'pixel.png', contentBase64: onePixel.split(',')[1], mimeType: 'image/png' })
+check('save accepts base64 bytes', offers[1]?.data.length > 0 && offers[1]?.mimeType === 'image/png')
+
+const badSave = await call('browser_save_file', { filename: 'x.txt' }).then(() => '').catch((error) => error.message)
+check('save requires content', /exactly one of content/.test(badSave), badSave)
 
 const refused = await call('browser_click', {}).then(() => '').catch((error) => error.message)
 check('click without a target explains itself', /ref|selector/.test(refused), refused)

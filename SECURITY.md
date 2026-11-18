@@ -91,6 +91,10 @@ Nothing is deleted automatically. Remove those directories to clear local state.
 - **Prompt injection.** A page can contain text that tells the agent to do
   something. The tool policy and DSH approvals are the mitigation; review
   approval cards before allowing anything.
+- **Downloads.** `browser_save_file` keeps the bytes in memory behind an
+  unguessable 18-byte id, serves them only on `127.0.0.1:<port>/download/<id>`
+  for ten minutes, and asks Chrome to download them (`downloads` permission).
+  The extension refuses any URL that is not that loopback shape.
 - **`browser_evaluate`** is disabled unless `allowEvaluate: true`, and then runs
   arbitrary JavaScript in the page's main world. The Host enforces the setting
   and advertises it in the authenticated welcome; the extension refuses the

@@ -722,6 +722,16 @@ async function dispatch(method, params) {
       const current = await chrome.tabs.get(tab.id)
       return { dataUrl, url: current.url, title: current.title }
     }
+    case 'file.download': {
+      // Only files this Host offers on its own loopback bridge.
+      const url = String(params.url || '')
+      if (!/^http:\/\/127\.0\.0\.1:\d+\/download\/[A-Za-z0-9_-]{16,}$/.test(url)) {
+        throw new Error('Refusing to download a URL that is not a loopback bridge file.')
+      }
+      const filename = String(params.filename || 'download').replace(/[^\w.\-() ]+/g, '_').slice(0, 120) || 'download'
+      const downloadId = await chrome.downloads.download({ url, filename, conflictAction: 'uniquify' })
+      return { downloadId }
+    }
     case 'tab.evaluate': {
       if (!allowEvaluate) {
         throw new Error('browser_evaluate is disabled. Enable `allowEvaluate: true` in the browser-companion config, then reconnect.')

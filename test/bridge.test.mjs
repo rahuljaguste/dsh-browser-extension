@@ -164,6 +164,24 @@ const silentResult = await new Promise((resolve) => {
 check('an unauthenticated socket is closed after the handshake timeout', silentResult === 1008, String(silentResult))
 silentBridge.stop()
 
+const fileBridge = createBridge({
+  port: 0,
+  home: await mkdtemp(join(tmpdir(), 'dsh-bridge-file-')),
+  log: () => {}
+})
+await fileBridge.start()
+const offered = fileBridge.offerFile({ filename: 'note.txt', mimeType: 'text/plain', data: Buffer.from('hello file') })
+const download = await fetch(offered.url)
+check('an offered file is served for download', download.status === 200 && (await download.text()) === 'hello file')
+check(
+  'the download carries an attachment disposition',
+  /attachment; filename="note.txt"/.test(download.headers.get('content-disposition') ?? ''),
+  download.headers.get('content-disposition')
+)
+const missingFile = await fetch(`http://127.0.0.1:${fileBridge.port}/download/${'a'.repeat(24)}`)
+check('an unknown file id is refused', missingFile.status === 404)
+fileBridge.stop()
+
 const blocker = createServer()
 await new Promise((resolve) => blocker.listen(0, '127.0.0.1', resolve))
 const busyPort = blocker.address().port

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DSH Browser Extension",
-  "version": "0.9.5",
+  "version": "0.10.0",
   "description": "Let DeepSeek Harness drive your Chrome tabs: navigate, snapshot, click, type, screenshot.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -10,7 +10,8 @@
     "storage",
     "activeTab",
     "sidePanel",
-    "alarms"
+    "alarms",
+    "downloads"
   ],
   "host_permissions": [
     "<all_urls>"

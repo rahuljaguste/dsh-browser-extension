@@ -170,6 +170,7 @@ Talk normally. For browser work the agent will `browser_open` → `browser_snaps
 | `browser_click` / `browser_type` / `browser_press` | interaction by ref or selector |
 | `browser_scroll` / `browser_read` / `browser_wait_for` | reading and waiting |
 | `browser_screenshot` | PNG of the visible area, saved to disk and shown in the panel |
+| `browser_save_file` | Hand the user a file: served on loopback and downloaded by Chrome into Downloads |
 | `browser_evaluate` | page JS — disabled unless `allowEvaluate: true` |
 
 Refs are rebuilt by every snapshot and die on navigation; stale refs fail with a

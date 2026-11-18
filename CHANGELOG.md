@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0
+
+- `browser_save_file` gives the agent a way to hand the user a file without the
+  denied `write` tool: it holds the bytes on the loopback bridge under an
+  unguessable, ten-minute URL and asks Chrome to download it into Downloads
+  (`downloads` permission). Without a connected browser it returns the URL
+  instead. 10 MB per file.
+
+
 ## 0.9.5
 
 - `plugin_manager` is denied for the sidebar Session under `no-shell` and
