@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1
+
+- The side panel now renders `ask_user_question` prompts: one card per batch with
+  the question, single-select or multi-select options, an "Other" answer, and
+  Skip. Answers are relayed back to the Host's `user-questions/request`
+  waterfall, so a turn no longer hangs on an invisible prompt. Aborted turns and
+  finished turns retire the cards.
+
 ## 0.9.0
 
 - Security: the sidebar tool policy now resolves restored Sessions through

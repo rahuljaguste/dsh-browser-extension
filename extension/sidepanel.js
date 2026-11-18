@@ -2,6 +2,7 @@ const dot = document.getElementById('dot')
 const statusLine = document.getElementById('status')
 const versionChip = document.getElementById('version')
 const errorBar = document.getElementById('error')
+const questionsBar = document.getElementById('questions')
 const approvalsBar = document.getElementById('approvals')
 const transcript = document.getElementById('transcript')
 const emptyState = document.getElementById('empty')
@@ -26,6 +27,7 @@ let pending = []
 let previewQueue = []
 const previewsByEntry = new Map()
 let approvals = []
+let questions = []
 let connected = false
 let agentStatus = 'idle'
 let port = null
@@ -222,6 +224,100 @@ function answerApproval(id, decision) {
   approvals = approvals.filter((entry) => entry.id !== id)
   renderApprovals()
   void chrome.runtime.sendMessage({ type: 'chat/approval', id, decision })
+}
+
+/* ─────────────────────────────── questions ───────────────────────────── */
+
+/**
+ * `ask_user_question` blocks the agent until a batch of answers arrives. Each
+ * card is one batch; a single single-select question answers on click, anything
+ * larger gets an explicit submit so a stray click cannot skip the rest.
+ */
+function renderQuestions() {
+  questionsBar.textContent = ''
+  questionsBar.hidden = questions.length === 0
+
+  for (const payload of questions) {
+    const card = el('div', 'question')
+    const head = el('div', 'question-head')
+    head.append(el('span', 'question-title', 'Question'))
+    const only = payload.questions[0]
+    if (payload.questions.length === 1 && only?.header) head.append(el('span', 'question-header', only.header))
+    card.append(head)
+
+    const answers = new Map()
+    for (const question of payload.questions) answers.set(question.id, { selected: new Set(), custom: '' })
+
+    const submitBatch = () => {
+      answerQuestion(payload.id, payload.questions.map((question) => {
+        const entry = answers.get(question.id)
+        return {
+          id: question.id,
+          selected: [...entry.selected],
+          ...(entry.custom.trim() ? { custom: entry.custom.trim() } : {})
+        }
+      }))
+    }
+
+    for (const question of payload.questions) {
+      const block = el('div', 'q-block')
+      block.append(el('p', 'question-text', question.question))
+
+      if (Array.isArray(question.options) && question.options.length > 0) {
+        const options = el('div', 'q-options')
+        for (const option of question.options) {
+          const button = el('button', 'q-option')
+          button.type = 'button'
+          button.append(el('span', null, option.label))
+          if (option.description) button.append(el('span', 'q-desc', option.description))
+          button.addEventListener('click', () => {
+            const entry = answers.get(question.id)
+            if (question.multiSelect) {
+              if (entry.selected.has(option.label)) entry.selected.delete(option.label)
+              else entry.selected.add(option.label)
+              button.classList.toggle('selected', entry.selected.has(option.label))
+              return
+            }
+            for (const sibling of options.children) sibling.classList.remove('selected')
+            entry.selected = new Set([option.label])
+            button.classList.add('selected')
+            if (payload.questions.length === 1) submitBatch()
+          })
+          options.append(button)
+        }
+        block.append(options)
+      }
+
+      const custom = document.createElement('input')
+      custom.className = 'q-custom'
+      custom.type = 'text'
+      custom.placeholder = 'Other answer…'
+      custom.addEventListener('input', () => {
+        answers.get(question.id).custom = custom.value
+      })
+      block.append(custom)
+      card.append(block)
+    }
+
+    const actions = el('div', 'q-actions')
+    const answer = el('button', null, 'Answer')
+    answer.type = 'button'
+    answer.addEventListener('click', submitBatch)
+    const skip = el('button', 'ghost', 'Skip')
+    skip.type = 'button'
+    skip.addEventListener('click', () => {
+      answerQuestion(payload.id, payload.questions.map((question) => ({ id: question.id, selected: [] })))
+    })
+    actions.append(answer, skip)
+    card.append(actions)
+    questionsBar.append(card)
+  }
+}
+
+function answerQuestion(id, batch) {
+  questions = questions.filter((entry) => entry.id !== id)
+  renderQuestions()
+  void chrome.runtime.sendMessage({ type: 'chat/answer', id, answers: batch })
 }
 
 /* ─────────────────────────────── files ──────────────────────────────── */
@@ -431,6 +527,10 @@ chrome.runtime.onMessage.addListener((message) => {
       approvals = message.approvals
       renderApprovals()
     }
+    if (Array.isArray(message.questions)) {
+      questions = message.questions
+      renderQuestions()
+    }
     renderTranscript()
     renderStatus()
     return false
@@ -455,6 +555,16 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'chat/approval' && message.approval) {
     approvals = [...approvals.filter((entry) => entry.id !== message.approval.id), message.approval]
     renderApprovals()
+    return false
+  }
+  if (message?.type === 'chat/question' && message.question) {
+    questions = [...questions.filter((entry) => entry.id !== message.question.id), message.question]
+    renderQuestions()
+    return false
+  }
+  if (message?.type === 'chat/question/clear') {
+    questions = questions.filter((entry) => entry.id !== message.id)
+    renderQuestions()
     return false
   }
   if (message?.type === 'chat/approval/clear') {
@@ -488,10 +598,12 @@ async function boot() {
     if (reply?.ok) {
       if (Array.isArray(reply.entries)) entries = reply.entries
       if (Array.isArray(reply.approvals)) approvals = reply.approvals
+      if (Array.isArray(reply.questions)) questions = reply.questions
       if (reply.screenshot?.dataUrl) shots = [reply.screenshot]
       agentStatus = reply.status || 'idle'
       renderTranscript()
       renderApprovals()
+      renderQuestions()
       renderStatus()
     }
   } catch {

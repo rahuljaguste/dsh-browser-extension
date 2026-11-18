@@ -38,6 +38,7 @@ let chatEntries = []
 let chatStatus = 'idle'
 let chatSessionId = null
 let pendingApprovals = []
+let pendingQuestions = []
 let lastScreenshot = null
 let allowEvaluate = false
 
@@ -304,12 +305,14 @@ function connect() {
       // The Host re-announces pending approvals in its snapshot, so a worker
       // restart no longer loses cards that are still waiting for an answer.
       if (Array.isArray(message.approvals)) pendingApprovals = message.approvals
+      if (Array.isArray(message.questions)) pendingQuestions = message.questions
       broadcastToPanels({
         type: 'chat/state',
         entries: chatEntries,
         status: chatStatus,
         sessionId: chatSessionId,
-        approvals: pendingApprovals
+        approvals: pendingApprovals,
+        questions: pendingQuestions
       })
       return
     }
@@ -332,6 +335,19 @@ function connect() {
       broadcastToPanels({ type: 'chat/approval', approval })
       return
     }
+    if (message?.type === 'chat/question') {
+      const question = message.question
+      if (question && !pendingQuestions.some((entry) => entry.id === question.id)) {
+        pendingQuestions.push(question)
+      }
+      broadcastToPanels({ type: 'chat/question', question })
+      return
+    }
+    if (message?.type === 'chat/question/clear') {
+      pendingQuestions = pendingQuestions.filter((entry) => entry.id !== message.id)
+      broadcastToPanels({ type: 'chat/question/clear', id: message.id })
+      return
+    }
     if (message?.type === 'chat/approval/clear') {
       pendingApprovals = pendingApprovals.filter((entry) => entry.id !== message.id)
       broadcastToPanels({ type: 'chat/approval/clear', id: message.id })
@@ -344,7 +360,8 @@ function connect() {
         entries: chatEntries,
         status: chatStatus,
         sessionId: chatSessionId,
-        approvals: pendingApprovals
+        approvals: pendingApprovals,
+        questions: pendingQuestions
       })
       return
     }
@@ -795,7 +812,8 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
       status: chatStatus,
       sessionId: chatSessionId,
       screenshot: lastScreenshot,
-      approvals: pendingApprovals
+      approvals: pendingApprovals,
+      questions: pendingQuestions
     })
     return false
   }
@@ -819,6 +837,16 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
       return false
     }
     send({ type: 'chat/cancel' })
+    reply({ ok: true })
+    return false
+  }
+  if (message?.type === 'chat/answer') {
+    if (!connected) {
+      reply({ ok: false, error: 'Not connected to DSH.' })
+      return false
+    }
+    pendingQuestions = pendingQuestions.filter((entry) => entry.id !== message.id)
+    send({ type: 'chat/answer', id: message.id, answers: message.answers })
     reply({ ok: true })
     return false
   }

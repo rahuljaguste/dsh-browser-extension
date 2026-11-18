@@ -190,6 +190,7 @@ try {
   const sentAttachments = []
   const sentApprovals = []
   const sentCancels = []
+  const sentAnswers = []
   bridge.setChatHandler(async (message) => {
     if (message.type === 'chat/open') {
       return { sessionId: 'session-test', status: 'idle', entries: [], approvals: [] }
@@ -200,6 +201,10 @@ try {
     }
     if (message.type === 'chat/approval') {
       sentApprovals.push(message)
+      return { sessionId: 'session-test', status: 'working', entries: [] }
+    }
+    if (message.type === 'chat/answer') {
+      sentAnswers.push(message)
       return { sessionId: 'session-test', status: 'working', entries: [] }
     }
     if (Array.isArray(message.attachments)) sentAttachments.push(...message.attachments)
@@ -269,6 +274,31 @@ try {
     return null
   })()
   check('approval answer reaches the Host', approvalAnswer?.id === 'ap-1' && approvalAnswer?.decision === 'allow', JSON.stringify(approvalAnswer))
+
+  // Question card: ask_user_question reaches the panel and is answerable.
+  bridge.broadcast({
+    type: 'chat/question',
+    question: {
+      id: 'q-1',
+      questions: [{ id: 'plan', question: 'Which plan?', options: [{ label: 'Starter' }, { label: 'Team' }] }]
+    }
+  })
+  const questionCard = await panel.waitForSelector('.question', { timeout: 5000 }).then(() => true).catch(() => false)
+  check('question card renders in the panel', questionCard)
+  await panel.click('.q-option')
+  const questionAnswer = await (async () => {
+    for (let i = 0; i < 40; i += 1) {
+      if (sentAnswers.length > 0) return sentAnswers[0]
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    return null
+  })()
+  check(
+    'question answer reaches the Host',
+    questionAnswer?.id === 'q-1' && questionAnswer?.answers?.[0]?.selected?.[0] === 'Starter',
+    JSON.stringify(questionAnswer)
+  )
+  check('answered question leaves the panel', (await panel.$('.question')) === null)
 
   // Stop button while the agent is working.
   bridge.broadcast({ type: 'chat/status', status: 'working' })

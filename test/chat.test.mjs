@@ -81,6 +81,7 @@ check('empty assistant content is dropped', mapSessionEvent('s1', { seq: 9, type
 console.log('\ncreateChat')
 const listeners = []
 const approvalListeners = []
+const questionListeners = []
 const prompts = []
 const created = []
 const cancelled = []
@@ -135,11 +136,14 @@ const ctx = {
   on(name, handler) {
     if (name === 'session/event') listeners.push(handler)
     if (name === 'approval/request') approvalListeners.push(handler)
+    if (name === 'user-questions/request') questionListeners.push(handler)
     return () => {
       const index = listeners.indexOf(handler)
       if (index >= 0) listeners.splice(index, 1)
       const approvalIndex = approvalListeners.indexOf(handler)
       if (approvalIndex >= 0) approvalListeners.splice(approvalIndex, 1)
+      const questionIndex = questionListeners.indexOf(handler)
+      if (questionIndex >= 0) questionListeners.splice(questionIndex, 1)
     }
   }
 }
@@ -222,6 +226,43 @@ check('approval is answerable', chat.answerApproval(asked.approval.id, 'allow') 
 check('allowed decision becomes allowed-once', (await pendingApproval) === 'allowed-once')
 check('answered approvals leave the snapshot', chat.snapshot().approvals.length === 0)
 check('unknown approval ids are ignored', chat.answerApproval('nope', 'allow') === false)
+
+// --- questions --------------------------------------------------------------
+check('registers a question answerer', questionListeners.length === 1)
+const questionEvents = []
+chat.subscribe((message) => questionEvents.push(message))
+const questionAbort = new AbortController()
+const pendingQuestion = questionListeners[0]({
+  agent: { id: 'session-1' },
+  signal: questionAbort.signal,
+  questions: [{ id: 'q1', header: 'Pick one', question: 'Which plan?', options: [{ label: 'Starter' }, { label: 'Team' }] }]
+}, async () => 'unavailable')
+await new Promise((resolve) => setTimeout(resolve, 10))
+const askedQuestion = questionEvents.find((message) => message.type === 'chat/question')
+check('the question reaches the panel', Boolean(askedQuestion) && askedQuestion.question.questions[0].question === 'Which plan?')
+check('question options survive the trip', askedQuestion?.question.questions[0].options?.[1]?.label === 'Team')
+check('the question is exposed in snapshots', chat.snapshot().questions.length === 1)
+check('answering resolves the waterfall', chat.answerQuestion(askedQuestion.question.id, [{ id: 'q1', selected: ['Team'] }]) === true)
+const answered = await pendingQuestion
+check('the answer carries the selection', answered.answers[0].selected[0] === 'Team')
+check('answered questions leave the snapshot', chat.snapshot().questions.length === 0)
+
+const abortController = new AbortController()
+const abortedQuestion = questionListeners[0]({
+  agent: { id: 'session-1' },
+  signal: abortController.signal,
+  questions: [{ id: 'q2', question: 'Still there?' }]
+}, async () => 'unavailable')
+abortController.abort()
+const aborted = await abortedQuestion.then(() => 'resolved', (error) => error.message)
+check('an aborted question rejects', /aborted before the user answered/.test(aborted), aborted)
+
+let delegatedQuestion = false
+const foreignQuestion = await questionListeners[0]({ agent: { id: 'other' }, questions: [] }, async () => {
+  delegatedQuestion = true
+  return 'unavailable'
+})
+check('other agents are delegated', delegatedQuestion === true && foreignQuestion === 'unavailable')
 
 // --- history backfill -------------------------------------------------------
 const restored = createChat({ ctx, cwd: '/tmp' })

@@ -77,6 +77,10 @@ export function apply(ctx, config = {}) {
       chat.answerApproval(message.id, message.decision)
       return chat.snapshot()
     }
+    if (message.type === 'chat/answer') {
+      chat.answerQuestion(message.id, message.answers)
+      return chat.snapshot()
+    }
     await chat.send(message.text, message.attachments)
     return chat.snapshot()
   }, () => chat.snapshot().status)

@@ -1,6 +1,6 @@
 {
   "name": "dsh-browser-extension",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
   "description": "Chrome companion for DeepSeek Harness: drive your real browser tabs, and chat with the agent from a side panel.",
   "exports": {
