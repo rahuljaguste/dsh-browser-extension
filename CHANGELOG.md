@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.2
+
+- Fix approvals and questions being claimed by the DSH web GUI before the side
+  panel: both answerers now register with `prepend`, so the panel wins while the
+  extension is connected. When it is disconnected they delegate, and the GUI
+  keeps working as before.
+
+
 ## 0.9.1
 
 - The side panel now renders `ask_user_question` prompts: one card per batch with

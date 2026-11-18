@@ -53,7 +53,10 @@ export function apply(ctx, config = {}) {
     ctx,
     cwd: typeof config.chatCwd === 'string' && config.chatCwd.length > 0 ? config.chatCwd : homedir(),
     ...(typeof config.attachmentDir === 'string' && config.attachmentDir.length > 0 ? { attachmentDir: config.attachmentDir } : {}),
-    ...(typeof config.toolPolicy === 'string' ? { toolPolicy: config.toolPolicy } : {})
+    ...(typeof config.toolPolicy === 'string' ? { toolPolicy: config.toolPolicy } : {}),
+    // The DSH web GUI also answers approvals/questions. Only claim them for the
+    // panel while the extension is connected; otherwise let the GUI take over.
+    isExtensionConnected: () => bridge.status().connected
   })
 
   ctx.effect(() => {

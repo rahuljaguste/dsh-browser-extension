@@ -257,6 +257,21 @@ abortController.abort()
 const aborted = await abortedQuestion.then(() => 'resolved', (error) => error.message)
 check('an aborted question rejects', /aborted before the user answered/.test(aborted), aborted)
 
+let delegatedToGui = false
+const guiChat = createChat({
+  ctx,
+  cwd: '/tmp',
+  attachmentDir: filesDir,
+  isExtensionConnected: () => false
+})
+const guiListeners = questionListeners.slice(-1)
+const delegatedResult = await guiListeners[0]({ agent: { id: 'session-1' }, questions: [{ id: 'q', question: 'x' }] }, async () => {
+  delegatedToGui = true
+  return { answers: [] }
+})
+check('a disconnected extension delegates to the GUI answerer', delegatedToGui === true && delegatedResult?.answers?.length === 0)
+guiChat.dispose()
+
 let delegatedQuestion = false
 const foreignQuestion = await questionListeners[0]({ agent: { id: 'other' }, questions: [] }, async () => {
   delegatedQuestion = true
