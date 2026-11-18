@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.4
+
+- Question and approval cards now dock directly above the composer instead of
+  above the transcript, so the control you must act on sits next to where you
+  type. Both docks scroll independently and are capped so the composer stays
+  visible.
+
+
 ## 0.9.3
 
 - The Host advertises its plugin version in `welcome` and `/state`, and the

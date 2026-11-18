@@ -157,10 +157,12 @@ body {
 
 .approvals {
   flex: none;
-  padding: 8px 12px 0;
+  padding: 0 12px 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 42vh;
+  overflow-y: auto;
 }
 
 .approval {
@@ -574,10 +576,12 @@ button:disabled {
 
 .questions {
   flex: none;
-  padding: 8px 12px 0;
+  padding: 0 12px 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
 }
 
 .question {
