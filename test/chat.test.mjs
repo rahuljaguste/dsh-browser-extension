@@ -227,6 +227,16 @@ check('allowed decision becomes allowed-once', (await pendingApproval) === 'allo
 check('answered approvals leave the snapshot', chat.snapshot().approvals.length === 0)
 check('unknown approval ids are ignored', chat.answerApproval('nope', 'allow') === false)
 
+const approvalAbort = new AbortController()
+const abortedApproval = approvalListeners[0]({
+  agent: { id: 'session-1' },
+  toolName: 'bash',
+  signal: approvalAbort.signal
+}, async () => 'unavailable')
+approvalAbort.abort()
+const abortedDecision = await abortedApproval
+check('an aborted approval fails closed', abortedDecision === 'rejected', String(abortedDecision))
+
 // --- questions --------------------------------------------------------------
 check('registers a question answerer', questionListeners.length === 1)
 const questionEvents = []
@@ -296,6 +306,14 @@ const disconnectedQuestion = await disconnectQuestion.then(() => 'resolved', (er
 const disconnectedApproval = await disconnectApproval
 check('an extension disconnect rejects a pending question', /disconnected/.test(disconnectedQuestion), disconnectedQuestion)
 check('an extension disconnect fails approvals closed', disconnectedApproval === 'rejected' && guiTookApproval === false)
+
+const cancelQuestion = questionListeners[0]({
+  agent: { id: 'session-1' },
+  questions: [{ id: 'q6', question: 'Still there?' }]
+}, async () => 'unavailable')
+await chat.cancel()
+const cancelledQuestion = await cancelQuestion.then(() => 'resolved', (error) => error.message)
+check('cancel rejects a pending question', /cancelled/.test(cancelledQuestion), cancelledQuestion)
 
 const timeoutChat = createChat({ ctx, cwd: '/tmp', attachmentDir: filesDir, questionTimeoutMs: 30 })
 await timeoutChat.send('hello')

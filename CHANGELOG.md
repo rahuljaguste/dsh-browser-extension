@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.3
+
+- Fix: cancelling a turn now retires pending question cards as well as
+  approvals, and an aborted approval request fails closed instead of surviving
+  until its timeout.
+
 ## 0.10.2
 
 - Fix: question answers are validated against the offered ids and labels;
