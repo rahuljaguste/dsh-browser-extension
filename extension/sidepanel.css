@@ -620,6 +620,19 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.q-detail {
+  margin: 0 0 8px;
+  padding: 8px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .q-options {
   display: flex;
   flex-direction: column;

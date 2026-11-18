@@ -812,6 +812,13 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
     reply({ ok: true })
     return false
   }
+  if (message?.type === 'panel/presence') {
+    // Tell the Host whether a panel is actually open; socket connectivity alone
+    // must not make the Host claim approvals/questions from the web GUI.
+    if (connected) send({ type: 'panel/presence', open: message.open === true })
+    reply({ ok: true })
+    return false
+  }
   if (message?.type === 'chat/open') {
     if (!socket || socket.readyState !== WebSocket.OPEN || !connected) {
       reply({ ok: false, error: 'Not connected to DSH.' })

@@ -268,6 +268,9 @@ function renderQuestions() {
     for (const question of payload.questions) {
       const block = el('div', 'q-block')
       block.append(el('p', 'question-text', question.question))
+      // Plan reviews carry the plan markdown in `detail`; show it before the
+      // approve/decline options so the decision is informed.
+      if (question.detail) block.append(el('div', 'q-detail', question.detail))
 
       if (Array.isArray(question.options) && question.options.length > 0) {
         const options = el('div', 'q-options')
@@ -620,3 +623,19 @@ async function boot() {
 
 void boot()
 setInterval(refreshConnection, 2500)
+
+/* ────────────────────────────── panel presence ───────────────────────── */
+function announcePresence(open = true) {
+  try {
+    void chrome.runtime.sendMessage({ type: 'panel/presence', open }).catch(() => {})
+  } catch {
+    // The worker may be restarting.
+  }
+}
+
+announcePresence(true)
+const presenceTimer = setInterval(() => announcePresence(true), 10_000)
+window.addEventListener('pagehide', () => {
+  clearInterval(presenceTimer)
+  announcePresence(false)
+})

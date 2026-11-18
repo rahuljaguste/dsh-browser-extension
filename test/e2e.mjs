@@ -15,7 +15,6 @@ import { startFixture } from './fixture.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const extensionPath = join(root, 'extension')
-const extensionVersion = JSON.parse(await readFile(join(extensionPath, 'manifest.json'), 'utf8')).version
 
 // Playwright's own Chromium keeps --load-extension; Google Chrome 137+ ignores
 // it, so the test never uses the installed Chrome. Browsers download into the
@@ -229,6 +228,15 @@ try {
   ).then(() => true).catch(() => false)
   check('side panel reports the connection', panelConnected)
 
+  const panelPresence = await (async () => {
+    for (let i = 0; i < 50; i += 1) {
+      if (bridge.status().panelOpen) return true
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    return false
+  })()
+  check('side panel announces its presence', panelPresence)
+
   await panel.fill('#input', 'open hacker news')
   await panel.press('#input', 'Enter')
   const rendered = await panel.waitForFunction(
@@ -281,11 +289,24 @@ try {
     type: 'chat/question',
     question: {
       id: 'q-1',
-      questions: [{ id: 'plan', question: 'Which plan?', options: [{ label: 'Starter' }, { label: 'Team' }] }]
+      questions: [{
+        id: 'plan',
+        header: 'Plan review',
+        question: 'Which plan?',
+        detail: '1. Inspect the page\n2. Summarize it',
+        intent: { kind: 'plan-review' },
+        options: [{ label: 'Starter' }, { label: 'Team' }]
+      }]
     }
   })
   const questionCard = await panel.waitForSelector('.question', { timeout: 5000 }).then(() => true).catch(() => false)
   check('question card renders in the panel', questionCard)
+  const detailRendered = await panel.waitForFunction(
+    () => document.querySelector('.q-detail')?.textContent?.includes('1. Inspect the page'),
+    null,
+    { timeout: 5000 }
+  ).then(() => true).catch(() => false)
+  check('question detail renders for plan review', detailRendered)
   await panel.click('.q-option')
   const questionAnswer = await (async () => {
     for (let i = 0; i < 40; i += 1) {

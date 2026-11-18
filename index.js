@@ -65,9 +65,13 @@ export function apply(ctx, config = {}) {
     cwd: typeof config.chatCwd === 'string' && config.chatCwd.length > 0 ? config.chatCwd : homedir(),
     ...(typeof config.attachmentDir === 'string' && config.attachmentDir.length > 0 ? { attachmentDir: config.attachmentDir } : {}),
     ...(typeof config.toolPolicy === 'string' ? { toolPolicy: config.toolPolicy } : {}),
-    // The DSH web GUI also answers approvals/questions. Only claim them for the
-    // panel while the extension is connected; otherwise let the GUI take over.
-    isExtensionConnected: () => bridge.status().connected
+    // The DSH web GUI also answers approvals/questions. Only claim them while a
+    // side panel is actually open; a connected socket with the panel closed
+    // must not starve the GUI.
+    isExtensionConnected: () => {
+      const status = bridge.status()
+      return status.connected && status.panelOpen === true
+    }
   })
 
   ctx.effect(() => {

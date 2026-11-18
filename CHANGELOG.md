@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.1
+
+- Security: `browser_save_file` MIME types are validated against a header-safe
+  grammar and the loopback HTTP handler is guarded, so a crafted value cannot
+  crash the Host. Expired download offers are swept and cleared on stop.
+- Fix: approvals and questions are claimed only while the side panel is actually
+  open. The panel announces presence, and unanswered questions time out instead
+  of hanging the turn.
+- Fix: `ask_user_question` carries `detail` and `intent`, and the side panel
+  renders the plan text before an approve/decline decision.
+- Docs: correct the tool count, note the `downloads` permission, and confirm the
+  install walkthrough for the DeepSeek Harness plugin.
+
 ## 0.10.0
 
 - `browser_save_file` gives the agent a way to hand the user a file without the

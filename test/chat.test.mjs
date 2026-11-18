@@ -235,12 +235,21 @@ const questionAbort = new AbortController()
 const pendingQuestion = questionListeners[0]({
   agent: { id: 'session-1' },
   signal: questionAbort.signal,
-  questions: [{ id: 'q1', header: 'Pick one', question: 'Which plan?', options: [{ label: 'Starter' }, { label: 'Team' }] }]
+  questions: [{
+    id: 'q1',
+    header: 'Pick one',
+    question: 'Which plan?',
+    detail: '# Plan\nDo the thing',
+    intent: { kind: 'plan-review' },
+    options: [{ label: 'Starter' }, { label: 'Team' }]
+  }]
 }, async () => 'unavailable')
 await new Promise((resolve) => setTimeout(resolve, 10))
 const askedQuestion = questionEvents.find((message) => message.type === 'chat/question')
 check('the question reaches the panel', Boolean(askedQuestion) && askedQuestion.question.questions[0].question === 'Which plan?')
 check('question options survive the trip', askedQuestion?.question.questions[0].options?.[1]?.label === 'Team')
+check('question detail survives the trip', askedQuestion?.question.questions[0].detail === '# Plan\nDo the thing')
+check('question intent survives the trip', askedQuestion?.question.questions[0].intent?.kind === 'plan-review')
 check('the question is exposed in snapshots', chat.snapshot().questions.length === 1)
 check('answering resolves the waterfall', chat.answerQuestion(askedQuestion.question.id, [{ id: 'q1', selected: ['Team'] }]) === true)
 const answered = await pendingQuestion
@@ -257,6 +266,21 @@ abortController.abort()
 const aborted = await abortedQuestion.then(() => 'resolved', (error) => error.message)
 check('an aborted question rejects', /aborted before the user answered/.test(aborted), aborted)
 
+const timeoutChat = createChat({ ctx, cwd: '/tmp', attachmentDir: filesDir, questionTimeoutMs: 30 })
+await timeoutChat.send('hello')
+const timeoutEvents = []
+timeoutChat.subscribe((message) => timeoutEvents.push(message))
+// The question deadline is unref'd; keep the test loop alive until it fires.
+const keepAlive = setTimeout(() => {}, 1000)
+const timedOut = await questionListeners.at(-1)({
+  agent: { id: 'session-1' },
+  questions: [{ id: 'qt', question: 'Still there?' }]
+}, async () => 'unavailable').then(() => '', (error) => error.message)
+clearTimeout(keepAlive)
+check('unanswered questions time out instead of hanging', /did not answer/.test(timedOut), timedOut)
+check('a timed-out question clears its card', timeoutEvents.some((message) => message.type === 'chat/question/clear'))
+timeoutChat.dispose()
+
 let delegatedToGui = false
 const guiChat = createChat({
   ctx,
@@ -264,12 +288,19 @@ const guiChat = createChat({
   attachmentDir: filesDir,
   isExtensionConnected: () => false
 })
+await guiChat.send('hello')
 const guiListeners = questionListeners.slice(-1)
 const delegatedResult = await guiListeners[0]({ agent: { id: 'session-1' }, questions: [{ id: 'q', question: 'x' }] }, async () => {
   delegatedToGui = true
   return { answers: [] }
 })
 check('a disconnected extension delegates to the GUI answerer', delegatedToGui === true && delegatedResult?.answers?.length === 0)
+let delegatedApproval = false
+const guiApproval = await approvalListeners.at(-1)({ agent: { id: 'session-1' }, toolName: 'bash' }, async () => {
+  delegatedApproval = true
+  return 'unavailable'
+})
+check('a disconnected extension delegates approvals to the GUI', delegatedApproval === true && guiApproval === 'unavailable')
 guiChat.dispose()
 
 let delegatedQuestion = false

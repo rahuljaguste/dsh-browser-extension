@@ -93,6 +93,10 @@ check('the welcome advertises the evaluate capability', good.seen.welcome?.allow
 check('the welcome advertises the Host version', good.seen.welcome?.hostVersion === '0.9.3', String(good.seen.welcome?.hostVersion))
 check('status reports the Host version', good.bridge.status().pluginVersion === '0.9.3', String(good.bridge.status().pluginVersion))
 check('the bridge marks the client connected after ready', await waitUntil(() => good.bridge.status().connected === true))
+good.ws.send(JSON.stringify({ type: 'panel/presence', open: true }))
+check('panel presence opens the panel flag', await waitUntil(() => good.bridge.status().panelOpen === true))
+good.ws.send(JSON.stringify({ type: 'panel/presence', open: false }))
+check('panel close clears the panel flag', await waitUntil(() => good.bridge.status().panelOpen === false))
 good.ws.close()
 good.bridge.stop()
 
@@ -198,6 +202,37 @@ check(
 )
 busy.stop()
 await new Promise((resolve) => blocker.close(resolve))
+
+const mimeBridge = createBridge({
+  port: 0,
+  home: await mkdtemp(join(tmpdir(), 'dsh-bridge-mime-')),
+  log: () => {}
+})
+await mimeBridge.start()
+const hostile = mimeBridge.offerFile({
+  filename: 'note.txt',
+  mimeType: 'text/plain\r\nX-Evil: 1',
+  data: Buffer.from('hello')
+})
+const hostileResponse = await fetch(hostile.url)
+check(
+  'a hostile mimeType falls back to octet-stream',
+  hostileResponse.headers.get('content-type') === 'application/octet-stream',
+  hostileResponse.headers.get('content-type')
+)
+check('the download still serves the bytes', (await hostileResponse.text()) === 'hello')
+const normal = mimeBridge.offerFile({
+  filename: 'note.md',
+  mimeType: 'text/markdown; charset=utf-8',
+  data: Buffer.from('hi')
+})
+const normalResponse = await fetch(normal.url)
+check(
+  'a normal mimeType is preserved',
+  normalResponse.headers.get('content-type') === 'text/markdown; charset=utf-8',
+  normalResponse.headers.get('content-type')
+)
+mimeBridge.stop()
 
 console.log(failures === 0 ? '\nALL BRIDGE CHECKS PASSED' : `\n${failures} BRIDGE CHECK(S) FAILED`)
 process.exit(failures === 0 ? 0 : 1)

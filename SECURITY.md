@@ -32,6 +32,12 @@ Only these frames: `challenge`/`hello`/`welcome`/`ready`, `ping`/`pong`, `chat/o
 No environment variables, no configuration, no files are pushed unless a tool
 result contains them.
 
+`browser_save_file` is the one file-serving path: the Host keeps the offered
+bytes in memory for up to ten minutes, serves them from an unguessable loopback
+URL, and the extension asks Chrome to download that URL with the `downloads`
+permission into the user's Downloads folder. Expired offers are swept, and the
+bridge clears the map when it stops.
+
 ## Authentication
 
 - The bridge binds `127.0.0.1` only. `host` is fixed to loopback; there is no

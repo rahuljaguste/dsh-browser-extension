@@ -13,7 +13,7 @@ between a DSH plugin and a Chrome extension.
 
 ## What you get
 
-- **15 browser tools** — navigate, snapshot, click, type, press, scroll, read,
+- **16 browser tools** — navigate, snapshot, click, type, press, scroll, read,
   wait, screenshot, tabs, evaluate (opt-in).
 - **A chat in the side panel** — a dedicated DSH Session, streamed over the
   bridge. Stop button, approvals, attachments, and history that survives an app
@@ -62,7 +62,7 @@ screenshots and approvals over that one socket.
 
 Not on the Chrome Web Store or npm yet: you install from source. There are two
 halves — the Host plugin and the Chrome extension — and **they must be the same
-version**, because pairing speaks a versioned protocol (0.9.0 uses v2).
+version**, because pairing speaks a versioned protocol (v2 since 0.9.0).
 
 ### 1. Clone
 
@@ -104,6 +104,9 @@ suite uses.
 Chrome will warn that the extension can read and change all data on sites you
 visit (`<all_urls>`). That is what scripting and capturing the tab you point it at
 requires; [SECURITY.md](SECURITY.md) explains exactly what it can and cannot reach.
+It also requests `downloads`, used by `browser_save_file` to start the download
+you asked for; the bytes are served from the loopback bridge, not from a Host
+file path.
 
 ### 4. Pair
 
