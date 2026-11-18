@@ -132,6 +132,7 @@ function closeSocket() {
   socket = null
   connected = false
   allowEvaluate = false
+  hostVersion = null
   clearTimeout(welcomeTimer)
   welcomeTimer = null
   stopKeepalive()
@@ -382,7 +383,16 @@ function connect() {
       // leaves the turn running, while a rejected send leaves it idle. Older
       // Hosts omit the field, where idle is the safe default.
       chatStatus = typeof message.status === 'string' ? message.status : 'idle'
-      broadcastToPanels({ type: 'chat/status', status: chatStatus })
+      // Re-announce the cached cards so a rejected answer/approval restores the
+      // card the panel removed optimistically.
+      broadcastToPanels({
+        type: 'chat/state',
+        entries: chatEntries,
+        status: chatStatus,
+        sessionId: chatSessionId,
+        approvals: pendingApprovals,
+        questions: pendingQuestions
+      })
       broadcastToPanels({ type: 'chat/error', message: message.message })
       return
     }
@@ -396,6 +406,7 @@ function connect() {
     socket = null
     connected = false
     allowEvaluate = false
+    hostVersion = null
     clearTimeout(welcomeTimer)
     welcomeTimer = null
     stopKeepalive()
@@ -723,10 +734,11 @@ async function dispatch(method, params) {
       return { dataUrl, url: current.url, title: current.title }
     }
     case 'file.download': {
-      // Only files this Host offers on its own loopback bridge.
+      // Only files this Host offers on its own configured loopback port.
       const url = String(params.url || '')
-      if (!/^http:\/\/127\.0\.0\.1:\d+\/download\/[A-Za-z0-9_-]{16,}$/.test(url)) {
-        throw new Error('Refusing to download a URL that is not a loopback bridge file.')
+      const match = /^http:\/\/127\.0\.0\.1:(\d+)\/download\/[A-Za-z0-9_-]{16,}$/.exec(url)
+      if (!match || Number(match[1]) !== settings.port) {
+        throw new Error("Refusing to download a URL that is not this Host's loopback bridge file.")
       }
       const filename = String(params.filename || 'download').replace(/[^\w.\-() ]+/g, '_').slice(0, 120) || 'download'
       const downloadId = await chrome.downloads.download({ url, filename, conflictAction: 'uniquify' })
@@ -789,6 +801,7 @@ async function panelState() {
     port: settings.port,
     hasToken: Boolean(settings.token),
     version: VERSION,
+    hostVersion,
     lastError,
     lastClose,
     attempts,
@@ -864,7 +877,8 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
       reply({ ok: false, error: 'Not connected to DSH.' })
       return false
     }
-    pendingQuestions = pendingQuestions.filter((entry) => entry.id !== message.id)
+    // Do not drop the cached card here: the Host's snapshot removes it on
+    // success, and an error broadcast must be able to restore it on rejection.
     send({ type: 'chat/answer', id: message.id, answers: message.answers })
     reply({ ok: true })
     return false
@@ -874,7 +888,6 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
       reply({ ok: false, error: 'Not connected to DSH.' })
       return false
     }
-    pendingApprovals = pendingApprovals.filter((entry) => entry.id !== message.id)
     send({ type: 'chat/approval', id: message.id, decision: message.decision === 'allow' ? 'allow' : 'deny' })
     reply({ ok: true })
     return false

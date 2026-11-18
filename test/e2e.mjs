@@ -15,6 +15,7 @@ import { startFixture } from './fixture.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const extensionPath = join(root, 'extension')
+const extensionVersion = JSON.parse(await readFile(join(extensionPath, 'manifest.json'), 'utf8')).version
 
 // Playwright's own Chromium keeps --load-extension; Google Chrome 137+ ignores
 // it, so the test never uses the installed Chrome. Browsers download into the
@@ -47,7 +48,8 @@ const bridge = createBridge({
   port: 0,
   home: await mkdtemp(join(tmpdir(), 'dsh-companion-home-')),
   log: () => {},
-  allowEvaluate: true
+  allowEvaluate: true,
+  pluginVersion: extensionVersion
 })
 await bridge.start()
 console.log(`bridge on port ${bridge.port}`)
@@ -90,6 +92,7 @@ console.log(`\nlaunching Chrome (${headed ? 'headed' : 'headless'}) with ${exten
 const context = await chromium.launchPersistentContext(userDataDir, {
   channel: 'chromium',
   headless: !headed,
+  downloadsPath: shotsDir,
   args: [
     `--disable-extensions-except=${extensionPath}`,
     `--load-extension=${extensionPath}`,
@@ -171,6 +174,13 @@ try {
   const signature = await readFile(shot.path)
   check('screenshot file exists and is a PNG', shotInfo.size > 1000 && signature.subarray(1, 4).toString() === 'PNG', shot.path)
 
+  const saved = await call('browser_save_file', { filename: 'note.txt', content: 'hello file', mimeType: 'text/plain' })
+  check('browser_save_file starts a download', saved.downloaded === true && saved.bytes === 10, JSON.stringify(saved))
+  const wrongPort = await bridge
+    .call('file.download', { url: `http://127.0.0.1:1/download/${'a'.repeat(24)}`, filename: 'x.txt' })
+    .then(() => '', (error) => error.message)
+  check('file.download refuses a non-configured port', /Refusing/.test(wrongPort), wrongPort)
+
   const navigated = await call('browser_navigate', { url: `${fixture.url}second` })
   check('browser_navigate reaches the second page', navigated.title === 'Second page', JSON.stringify(navigated))
   const waited = await call('browser_wait_for', { text: 'Arrived' })
@@ -201,11 +211,12 @@ try {
     }
     if (message.type === 'chat/approval') {
       sentApprovals.push(message)
-      return { sessionId: 'session-test', status: 'working', entries: [] }
+      return { sessionId: 'session-test', status: 'working', entries: [], approvals: [], questions: [] }
     }
     if (message.type === 'chat/answer') {
+      if (message.id === 'q-bad') throw new Error('answer rejected by test')
       sentAnswers.push(message)
-      return { sessionId: 'session-test', status: 'working', entries: [] }
+      return { sessionId: 'session-test', status: 'working', entries: [], approvals: [], questions: [] }
     }
     if (Array.isArray(message.attachments)) sentAttachments.push(...message.attachments)
     return {
@@ -322,6 +333,65 @@ try {
   )
   check('answered question leaves the panel', (await panel.$('.question')) === null)
 
+  // Multi-select plus a custom answer.
+  bridge.broadcast({
+    type: 'chat/question',
+    question: {
+      id: 'q-multi',
+      questions: [{ id: 'm1', question: 'Pick many', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] }]
+    }
+  })
+  await panel.waitForSelector('.question', { timeout: 5000 })
+  await panel.locator('.q-option').nth(0).click()
+  await panel.locator('.q-option').nth(1).click()
+  await panel.fill('.q-custom', 'C')
+  await panel.locator('.q-actions button:not(.ghost)').click()
+  const multiAnswer = await (async () => {
+    for (let i = 0; i < 40; i += 1) {
+      if (sentAnswers.length >= 2) return sentAnswers[1]
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    return null
+  })()
+  check(
+    'multi-select and custom answers reach the Host',
+    multiAnswer?.id === 'q-multi' &&
+      multiAnswer?.answers?.[0]?.selected?.join(',') === 'A,B' &&
+      multiAnswer?.answers?.[0]?.custom === 'C',
+    JSON.stringify(multiAnswer)
+  )
+
+  // Skip sends an explicit empty selection.
+  bridge.broadcast({
+    type: 'chat/question',
+    question: { id: 'q-skip', questions: [{ id: 's1', question: 'Skip me', options: [{ label: 'Yes' }] }] }
+  })
+  await panel.waitForSelector('.question', { timeout: 5000 })
+  await panel.locator('.q-actions button.ghost').click()
+  const skipAnswer = await (async () => {
+    for (let i = 0; i < 40; i += 1) {
+      if (sentAnswers.length >= 3) return sentAnswers[2]
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    return null
+  })()
+  check('skip sends an empty selection', skipAnswer?.id === 'q-skip' && skipAnswer?.answers?.[0]?.selected?.length === 0, JSON.stringify(skipAnswer))
+
+  // A Host rejection restores the card and surfaces the error.
+  bridge.broadcast({
+    type: 'chat/question',
+    question: { id: 'q-bad', questions: [{ id: 'b1', question: 'Will be rejected', options: [{ label: 'Yes' }] }] }
+  })
+  await panel.waitForSelector('.question', { timeout: 5000 })
+  await panel.locator('.q-option').first().click()
+  const restoredQuestion = await panel.waitForFunction(
+    () => document.querySelector('.question') !== null && document.querySelector('#error')?.textContent?.includes('answer rejected by test'),
+    null,
+    { timeout: 5000 }
+  ).then(() => true).catch(() => false)
+  check('a rejected answer restores the question card with an error', restoredQuestion)
+  bridge.broadcast({ type: 'chat/question/clear', id: 'q-bad' })
+
   // Stop button while the agent is working.
   bridge.broadcast({ type: 'chat/status', status: 'working' })
   const stopVisible = await panel.waitForSelector('#stop:not([hidden])', { timeout: 5000 }).then(() => true).catch(() => false)
@@ -386,6 +456,25 @@ try {
     { timeout: 5000 }
   ).then(() => true).catch(() => false)
   check('approval cards are restored from a state snapshot', restoredCard)
+
+  // Docks must not push the composer off-screen in a narrow, short panel.
+  bridge.broadcast({ type: 'chat/approval', approval: { id: 'ap-layout', toolName: 'bash', reason: 'Layout check' } })
+  bridge.broadcast({
+    type: 'chat/question',
+    question: { id: 'q-layout', questions: [{ id: 'ql', question: 'Layout?', detail: 'Detail', options: [{ label: 'A' }] }] }
+  })
+  await panel.setViewportSize({ width: 380, height: 400 })
+  await panel.waitForTimeout(150)
+  const composerBox = await panel.locator('#composer').boundingBox()
+  check(
+    'the composer stays visible with docks at 380x400',
+    Boolean(composerBox) && composerBox.y >= 0 && composerBox.y + composerBox.height <= 400.5,
+    JSON.stringify(composerBox)
+  )
+  await panel.setViewportSize({ width: 900, height: 800 })
+  bridge.broadcast({ type: 'chat/approval/clear', id: 'ap-layout' })
+  bridge.broadcast({ type: 'chat/question/clear', id: 'q-layout' })
+  await panel.waitForTimeout(100)
   await panel.close()
 
   const closed = await call('browser_close', { tabId: opened.id })

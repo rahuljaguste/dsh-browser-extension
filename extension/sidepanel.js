@@ -180,15 +180,27 @@ function renderTranscript() {
 
 /* ─────────────────────────────── status ──────────────────────────────── */
 
+function compareVersions(a, b) {
+  const left = String(a ?? '').split('.').map((part) => Number.parseInt(part, 10) || 0)
+  const right = String(b ?? '').split('.').map((part) => Number.parseInt(part, 10) || 0)
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const diff = (left[index] ?? 0) - (right[index] ?? 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
+
 function renderStatus() {
   dot.className = 'dot'
+  const extensionVersion = versionChip.textContent ? versionChip.textContent.replace(/^v/, '') : ''
+  const hostLabel = hostVersion && hostVersion !== 'unknown' ? hostVersion : 'unknown'
   if (!connected) {
     statusLine.textContent = 'Offline'
-  } else if (hostVersion && hostVersion !== 'unknown' && versionChip.textContent && hostVersion !== versionChip.textContent.replace(/^v/, '')) {
-    // A stale Host process silently keeps old behaviour; say so instead of
-    // looking broken.
+  } else if (extensionVersion && (!hostVersion || hostVersion === 'unknown' || compareVersions(hostVersion, extensionVersion) !== 0)) {
+    // A pre-0.9.3 Host sends no version; a mismatch means one half is stale.
     dot.classList.add('working')
-    statusLine.textContent = `Host ${hostVersion} · extension ${versionChip.textContent.slice(1)} — restart DSH`
+    const staleHost = !hostVersion || hostVersion === 'unknown' || compareVersions(hostVersion, extensionVersion) < 0
+    statusLine.textContent = `Host ${hostLabel} · extension ${extensionVersion} — ${staleHost ? 'restart DSH' : 'reload the extension'}`
   } else if (agentStatus === 'working') {
     dot.classList.add('working')
     statusLine.textContent = 'Working…'
@@ -226,10 +238,18 @@ function renderApprovals() {
   }
 }
 
-function answerApproval(id, decision) {
+async function answerApproval(id, decision) {
+  const previous = approvals
   approvals = approvals.filter((entry) => entry.id !== id)
   renderApprovals()
-  void chrome.runtime.sendMessage({ type: 'chat/approval', id, decision })
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: 'chat/approval', id, decision })
+    if (reply && reply.ok === false) throw new Error(reply.error || 'Could not send the approval.')
+  } catch (error) {
+    approvals = previous
+    renderApprovals()
+    showError(String(error?.message ?? error))
+  }
 }
 
 /* ─────────────────────────────── questions ───────────────────────────── */
@@ -323,10 +343,18 @@ function renderQuestions() {
   }
 }
 
-function answerQuestion(id, batch) {
+async function answerQuestion(id, batch) {
+  const previous = questions
   questions = questions.filter((entry) => entry.id !== id)
   renderQuestions()
-  void chrome.runtime.sendMessage({ type: 'chat/answer', id, answers: batch })
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: 'chat/answer', id, answers: batch })
+    if (reply && reply.ok === false) throw new Error(reply.error || 'Could not send the answer.')
+  } catch (error) {
+    questions = previous
+    renderQuestions()
+    showError(String(error?.message ?? error))
+  }
 }
 
 /* ─────────────────────────────── files ──────────────────────────────── */

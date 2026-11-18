@@ -6,9 +6,26 @@ const dot = document.getElementById('dot')
 let loaded = false
 let hasToken = false
 
+function compareVersions(a, b) {
+  const left = String(a ?? '').split('.').map((part) => Number.parseInt(part, 10) || 0)
+  const right = String(b ?? '').split('.').map((part) => Number.parseInt(part, 10) || 0)
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const diff = (left[index] ?? 0) - (right[index] ?? 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
+
 function render(status) {
   dot.classList.toggle('on', Boolean(status.connected))
   if (status.connected) {
+    const hostVersion = status.hostVersion
+    if (!hostVersion || hostVersion === 'unknown' || compareVersions(hostVersion, status.version) !== 0) {
+      const hostLabel = hostVersion && hostVersion !== 'unknown' ? hostVersion : 'unknown'
+      const staleHost = !hostVersion || hostVersion === 'unknown' || compareVersions(hostVersion, status.version) < 0
+      statusLine.textContent = `Host ${hostLabel} · extension ${status.version} — ${staleHost ? 'restart DSH' : 'reload the extension'}`
+      return
+    }
     statusLine.textContent = `Connected to DSH on port ${status.port} · v${status.version}`
     return
   }

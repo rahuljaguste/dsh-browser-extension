@@ -23,11 +23,15 @@ const offers = []
 const broadcasts = []
 const onePixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
+let downloadFailure = null
 const bridge = {
   async call(method, params) {
     calls.push({ method, params })
     if (method === 'tab.screenshot') return { dataUrl: onePixel, url: 'https://example.com/', title: 'Example' }
-    if (method === 'file.download') return { downloadId: 7 }
+    if (method === 'file.download') {
+      if (downloadFailure) throw new Error(downloadFailure)
+      return { downloadId: 7 }
+    }
     if (method === 'tabs.list') return [{ id: 1, title: 'Example', url: 'https://example.com/', active: true }]
     return { ok: true }
   },
@@ -84,6 +88,17 @@ check('save accepts base64 bytes', offers[1]?.data.length > 0 && offers[1]?.mime
 
 const badSave = await call('browser_save_file', { filename: 'x.txt' }).then(() => '').catch((error) => error.message)
 check('save requires content', /exactly one of content/.test(badSave), badSave)
+
+downloadFailure = 'User gesture required'
+const failedDownload = await call('browser_save_file', { filename: 'x.txt', content: 'x' })
+check(
+  'a download failure is reported instead of a false disconnect',
+  failedDownload.downloaded === false &&
+    /User gesture required/.test(failedDownload.note) &&
+    !/not connected/i.test(failedDownload.note),
+  failedDownload.note
+)
+downloadFailure = null
 
 const refused = await call('browser_click', {}).then(() => '').catch((error) => error.message)
 check('click without a target explains itself', /ref|selector/.test(refused), refused)

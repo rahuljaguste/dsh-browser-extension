@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.2
+
+- Fix: question answers are validated against the offered ids and labels;
+  invalid batches are rejected and the card is restored with an error.
+- Fix: pending approvals/questions fail closed when the extension disconnects,
+  and turn end no longer records a fabricated skip.
+- Fix: stale-Host detection covers a missing Host version, and the popup shows
+  the same warning as the side panel.
+- Fix: download failures report the real error instead of a false "browser is
+  not connected", and `file.download` only accepts the configured bridge port.
+- UI: docks share the panel height with the transcript so the composer stays
+  visible at small sizes; "Jump to latest" no longer overlaps the docks.
+
 ## 0.10.1
 
 - Security: `browser_save_file` MIME types are validated against a header-safe

@@ -82,6 +82,8 @@ export function apply(ctx, config = {}) {
     }
   })
 
+  bridge.setDisconnectHandler(() => chat.handleExtensionDisconnect())
+
   bridge.setChatHandler(async (message) => {
     if (message.type === 'chat/open') {
       await chat.prepare()
@@ -92,11 +94,15 @@ export function apply(ctx, config = {}) {
       return chat.snapshot()
     }
     if (message.type === 'chat/approval') {
-      chat.answerApproval(message.id, message.decision)
+      if (!chat.answerApproval(message.id, message.decision)) {
+        throw new Error('That approval is no longer pending.')
+      }
       return chat.snapshot()
     }
     if (message.type === 'chat/answer') {
-      chat.answerQuestion(message.id, message.answers)
+      if (!chat.answerQuestion(message.id, message.answers)) {
+        throw new Error('That answer is no longer valid. Reopen the card and try again.')
+      }
       return chat.snapshot()
     }
     await chat.send(message.text, message.attachments)

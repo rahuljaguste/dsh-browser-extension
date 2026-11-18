@@ -251,6 +251,14 @@ check('question options survive the trip', askedQuestion?.question.questions[0].
 check('question detail survives the trip', askedQuestion?.question.questions[0].detail === '# Plan\nDo the thing')
 check('question intent survives the trip', askedQuestion?.question.questions[0].intent?.kind === 'plan-review')
 check('the question is exposed in snapshots', chat.snapshot().questions.length === 1)
+check(
+  'an answer with an unknown question id is refused',
+  chat.answerQuestion(askedQuestion.question.id, [{ id: 'nope', selected: ['Team'] }]) === false
+)
+check(
+  'an answer with an unoffered label is refused',
+  chat.answerQuestion(askedQuestion.question.id, [{ id: 'q1', selected: ['Free'] }]) === false
+)
 check('answering resolves the waterfall', chat.answerQuestion(askedQuestion.question.id, [{ id: 'q1', selected: ['Team'] }]) === true)
 const answered = await pendingQuestion
 check('the answer carries the selection', answered.answers[0].selected[0] === 'Team')
@@ -265,6 +273,29 @@ const abortedQuestion = questionListeners[0]({
 abortController.abort()
 const aborted = await abortedQuestion.then(() => 'resolved', (error) => error.message)
 check('an aborted question rejects', /aborted before the user answered/.test(aborted), aborted)
+
+const turnQuestion = questionListeners[0]({
+  agent: { id: 'session-1' },
+  questions: [{ id: 'q3', question: 'Still there?' }]
+}, async () => 'unavailable')
+emit({ seq: 9, type: 'turn/end', data: { turn: 1 } })
+const turnEnded = await turnQuestion.then(() => 'resolved', (error) => error.message)
+check('turn end rejects a pending question instead of faking a skip', /turn ended/.test(turnEnded), turnEnded)
+
+const disconnectQuestion = questionListeners[0]({
+  agent: { id: 'session-1' },
+  questions: [{ id: 'q4', question: 'Still there?' }]
+}, async () => 'unavailable')
+let guiTookApproval = false
+const disconnectApproval = approvalListeners[0]({ agent: { id: 'session-1' }, toolName: 'bash' }, async () => {
+  guiTookApproval = true
+  return 'unavailable'
+})
+chat.handleExtensionDisconnect()
+const disconnectedQuestion = await disconnectQuestion.then(() => 'resolved', (error) => error.message)
+const disconnectedApproval = await disconnectApproval
+check('an extension disconnect rejects a pending question', /disconnected/.test(disconnectedQuestion), disconnectedQuestion)
+check('an extension disconnect fails approvals closed', disconnectedApproval === 'rejected' && guiTookApproval === false)
 
 const timeoutChat = createChat({ ctx, cwd: '/tmp', attachmentDir: filesDir, questionTimeoutMs: 30 })
 await timeoutChat.send('hello')
