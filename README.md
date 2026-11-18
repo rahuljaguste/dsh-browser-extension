@@ -212,7 +212,7 @@ is a prompt-injection surface, so it is restricted per Session through
 
 | Value | Denied for this Session |
 |---|---|
-| `no-shell` *(default)* | `bash`, `pwsh`, `write`, `edit`, `terminal` |
+| `no-shell` *(default)* | `bash`, `pwsh`, `write`, `edit`, `terminal`, `plugin_manager` |
 | `browser-only` | the above plus `read`, `read_image`, `glob`, `grep` |
 | `open` | nothing — full profile powers |
 

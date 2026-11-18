@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.5
+
+- `plugin_manager` is denied for the sidebar Session under `no-shell` and
+  `browser-only`. Every call asks for `danger-full-access` approval and can
+  install Host code, which a browser chat should not be able to do.
+
+
 ## 0.9.4
 
 - Question and approval cards now dock directly above the composer instead of
