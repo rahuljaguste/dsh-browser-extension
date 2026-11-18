@@ -111,14 +111,22 @@ file path.
 ### 4. Pair
 
 Ask the agent in DSH to run `browser_status`. It returns the port (default
-`8787`) and the pairing token. Open the extension popup, paste both, **Save &
-connect** — the badge turns `ON`.
+`8787`) and the owner-only token file path — never the token itself. Read the
+token locally:
+
+```sh
+cat "${DSH_HOME:-$HOME/.dsh}/storages/browser-companion.json"
+```
+
+Open the extension popup, paste the port and token, **Save & connect** — the
+badge turns `ON`.
 
 The generated token is 192 bits, stored owner-only at
-`<DSH_HOME>/storages/browser-companion.json`. Pairing is a per-connection
-nonce/HMAC exchange, so the raw token never crosses the socket. It is a loopback
-pairing secret, not an account credential; an explicit `config.token` must be at
-least 16 characters.
+`<DSH_HOME>/storages/browser-companion.json`. It is never returned in tool
+output or sent to the model. Pairing is a per-connection nonce/HMAC exchange, so
+the raw token never crosses the socket either. It is a loopback pairing secret,
+not an account credential; an explicit `config.token` must be at least 16
+characters.
 
 ### 5. Verify
 

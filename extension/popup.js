@@ -30,7 +30,7 @@ function render(status) {
     return
   }
   if (!status.hasToken) {
-    statusLine.textContent = 'Not paired yet. Run browser_status in DSH and paste the token below.'
+    statusLine.textContent = 'Not paired yet. Read the token from <DSH_HOME>/storages/browser-companion.json (browser_status gives the port) and paste it below.'
     return
   }
   const parts = [

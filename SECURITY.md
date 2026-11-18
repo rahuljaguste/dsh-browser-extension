@@ -53,7 +53,9 @@ bridge clears the map when it stops.
   configured port cannot learn it, and an impostor cannot accept commands.
   The Host does not mark the extension connected or dispatch anything until the
   extension sends `ready` after verifying the server proof.
-  An explicit `config.token` must be at least 16 characters.
+  The token is never returned in tool output; `browser_status` reports only the
+  owner-only token file path. An explicit `config.token` must be at least 16
+  characters.
 - WebSocket upgrades whose `Origin` is an `http(s)` page are refused, so a
   random web page cannot reach the socket. Local processes with no origin can
   still attempt a connection and still need the token.
@@ -109,3 +111,12 @@ Nothing is deleted automatically. Remove those directories to clear local state.
 - **Approvals** raised by the sidebar Session are answered from the extension. If
   nobody answers within five minutes the request is rejected (fail closed), and
   closing a turn retires outstanding cards.
+- **URL redaction is best-effort.** Before tab/page URLs reach the model, the
+  extension replaces values of bearer-like query parameters (`token`, `key`,
+  `auth`, `session`, `code`, and similar) with `REDACTED` and drops URL
+  userinfo. Page text and screenshots can still contain secrets, so this is not
+  a complete data-loss-prevention boundary.
+- **`browser_save_file` refuses executable, script, and installer extensions**
+  (`.command`, `.sh`, `.exe`, `.msi`, `.js`, `.dmg`, and similar). It can still
+  write documents and archives, so review what a file download contains before
+  opening it.

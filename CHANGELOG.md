@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.4
+
+- Security: `browser_status` no longer returns the pairing token to the model;
+  it reports the owner-only token file path instead. Read the token locally to
+  pair.
+- Security: bearer-like URL query parameters (`token`, `key`, `auth`, `session`,
+  `code`, and similar) and URL userinfo are redacted from tab/page tool results
+  before they reach the model or panel.
+- Security: `browser_save_file` refuses executable, script, and installer file
+  types.
+
 ## 0.10.3
 
 - Fix: cancelling a turn now retires pending question cards as well as

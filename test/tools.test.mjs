@@ -74,7 +74,8 @@ check('capture is mirrored to the panel', broadcasts.some((message) => message.t
 
 const status = await call('browser_status')
 check('status reports the connection', status.connected === true && status.port === 8787)
-check('status carries the pairing token only', typeof status.token === 'string' && !('credentials' in status))
+check('status masks the pairing token', status.token === '••••••••' && !('credentials' in status))
+check('status points at the owner-only token file', /browser-companion\.json$/.test(status.tokenFile))
 
 await call('browser_tabs')
 check('tabs call reaches the bridge', calls.some((entry) => entry.method === 'tabs.list'))
@@ -88,6 +89,10 @@ check('save accepts base64 bytes', offers[1]?.data.length > 0 && offers[1]?.mime
 
 const badSave = await call('browser_save_file', { filename: 'x.txt' }).then(() => '').catch((error) => error.message)
 check('save requires content', /exactly one of content/.test(badSave), badSave)
+
+const blockedSave = await call('browser_save_file', { filename: 'evil.command', content: 'x' })
+  .then(() => '', (error) => error.message)
+check('save refuses executable and script file types', /Refusing to save/.test(blockedSave), blockedSave)
 
 downloadFailure = 'User gesture required'
 const failedDownload = await call('browser_save_file', { filename: 'x.txt', content: 'x' })

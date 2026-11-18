@@ -194,6 +194,22 @@ try {
   const backHome = await call('browser_evaluate', { expression: 'document.title' })
   check('selector clicks navigate back to the fixture', backHome.value === 'Companion Fixture', JSON.stringify(backHome))
 
+  const secretUrl = `${fixture.url}?token=supersecret&keep=1`
+  const secretTab = await call('browser_open', { url: secretUrl })
+  check(
+    'tab URLs redact secret query parameters',
+    secretTab.url.includes('token=REDACTED') && secretTab.url.includes('keep=1') && !secretTab.url.includes('supersecret'),
+    secretTab.url
+  )
+  const tabsWithSecret = await call('browser_tabs')
+  check(
+    'tab lists redact secret query parameters',
+    tabsWithSecret.tabs.some((tab) => tab.url.includes('token=REDACTED') && !tab.url.includes('supersecret'))
+  )
+  const secretRead = await call('browser_read')
+  check('read URLs redact secret query parameters', secretRead.url.includes('token=REDACTED') && !secretRead.url.includes('supersecret'), secretRead.url)
+  await call('browser_close', { tabId: secretTab.id })
+
   // --- side panel chat -------------------------------------------------------
   // The panel is a client: the bridge answers chat frames with a snapshot, which
   // is exactly what the Host plugin does with a real Session.

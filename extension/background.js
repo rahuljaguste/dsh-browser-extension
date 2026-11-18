@@ -74,6 +74,47 @@ function proofMatches(expected, given) {
   return diff === 0
 }
 
+const SECRET_QUERY_KEY = '(?:token|access_?token|id_?token|refresh_?token|key|api[_-]?key|auth|authorization|password|passwd|secret|session|session[_-]?id|sid|code|otp|sig|signature|jwt|credential|ticket)'
+const SECRET_QUERY_RE = new RegExp(`^${SECRET_QUERY_KEY}$`, 'i')
+const SECRET_HASH_RE = new RegExp(`(?:^#|[&?])${SECRET_QUERY_KEY}=`, 'i')
+
+/** Strip bearer-like values from a URL before it reaches the model or panel. */
+function redactUrl(value) {
+  if (typeof value !== 'string' || !/^https?:\/\//i.test(value)) return value
+  try {
+    const url = new URL(value)
+    let changed = false
+    for (const key of [...url.searchParams.keys()]) {
+      if (SECRET_QUERY_RE.test(key)) {
+        url.searchParams.set(key, 'REDACTED')
+        changed = true
+      }
+    }
+    if (url.username || url.password) {
+      url.username = 'REDACTED'
+      url.password = ''
+      changed = true
+    }
+    if (url.hash && SECRET_HASH_RE.test(url.hash)) {
+      url.hash = '#REDACTED'
+      changed = true
+    }
+    return changed ? url.toString() : value
+  } catch {
+    return value
+  }
+}
+
+function redactResult(value, depth = 0) {
+  if (depth > 12 || value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map((item) => redactResult(item, depth + 1))
+  const out = {}
+  for (const [key, item] of Object.entries(value)) {
+    out[key] = key === 'url' && typeof item === 'string' ? redactUrl(item) : redactResult(item, depth + 1)
+  }
+  return out
+}
+
 /* ------------------------------------------------------------------ badge */
 
 function setBadge(text, title) {
@@ -528,7 +569,7 @@ async function handleCommand(message) {
   const id = message.id
   const started = Date.now()
   try {
-    const result = await dispatch(message.method, message.params || {})
+    const result = redactResult(await dispatch(message.method, message.params || {}))
     lastCommandAt = new Date().toISOString()
     recordActivity({
       at: Date.now(),
