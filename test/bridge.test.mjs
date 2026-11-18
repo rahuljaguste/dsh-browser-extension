@@ -80,7 +80,7 @@ async function open(options = {}) {
 
 console.log('bridge handshake')
 const token = 'a'.repeat(32)
-const good = await open({ token, allowEvaluate: true })
+const good = await open({ token, allowEvaluate: true, pluginVersion: '0.9.3' })
 const goodOutcome = await good.done
 check('the server speaks first with a challenge', typeof good.seen.challenge?.nonce === 'string' && good.seen.challenge.nonce.length > 0)
 check('a correct client proof is accepted', goodOutcome === 'welcome')
@@ -90,6 +90,8 @@ check(
   good.seen.welcome?.proof
 )
 check('the welcome advertises the evaluate capability', good.seen.welcome?.allowEvaluate === true)
+check('the welcome advertises the Host version', good.seen.welcome?.hostVersion === '0.9.3', String(good.seen.welcome?.hostVersion))
+check('status reports the Host version', good.bridge.status().pluginVersion === '0.9.3', String(good.bridge.status().pluginVersion))
 check('the bridge marks the client connected after ready', await waitUntil(() => good.bridge.status().connected === true))
 good.ws.close()
 good.bridge.stop()

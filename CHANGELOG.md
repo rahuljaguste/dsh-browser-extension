@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.3
+
+- The Host advertises its plugin version in `welcome` and `/state`, and the
+  extension compares it with its own. A stale Host process now shows
+  "Host 0.9.2 · extension 0.9.3 — restart DSH" in the panel and popup instead of
+  silently keeping old behaviour.
+
+
 ## 0.9.2
 
 - Fix approvals and questions being claimed by the DSH web GUI before the side

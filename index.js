@@ -8,6 +8,7 @@
  * Failure here must never take the harness down: the bridge catches listen
  * errors and reports them through `browser_status` instead of throwing at boot.
  */
+import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { createBridge } from './lib/bridge.js'
 import { createChat } from './lib/chat.js'
@@ -18,6 +19,15 @@ export const name = 'browser-companion'
 
 /** Host services this plugin consumes. */
 export const inject = ['tools']
+
+/** The running Host half's version, so a stale process is visible from outside. */
+function pluginVersion() {
+  try {
+    return JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version ?? 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
 
 /** A blank YAML value (`port:`) coerces to 0; only accept real numbers. */
 function numberConfig(value, fallback) {
@@ -41,7 +51,8 @@ export function apply(ctx, config = {}) {
     port,
     ...(typeof config.token === 'string' && config.token.length > 0 ? { token: config.token } : {}),
     ...(commandTimeoutMs !== null ? { commandTimeoutMs } : {}),
-    allowEvaluate
+    allowEvaluate,
+    pluginVersion: pluginVersion()
   })
 
   ctx.effect(() => {

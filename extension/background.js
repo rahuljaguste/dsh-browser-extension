@@ -41,6 +41,7 @@ let pendingApprovals = []
 let pendingQuestions = []
 let lastScreenshot = null
 let allowEvaluate = false
+let hostVersion = null
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const textEncoder = new TextEncoder()
@@ -258,6 +259,7 @@ function connect() {
           welcomeTimer = null
           connected = true
           allowEvaluate = message.allowEvaluate === true
+          hostVersion = typeof message.hostVersion === 'string' ? message.hostVersion : null
           retry = 0
           lastError = null
           lastConnectedAt = new Date().toISOString()
@@ -899,6 +901,7 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
       port: settings.port,
       hasToken: Boolean(settings.token),
       version: VERSION,
+      hostVersion,
       lastError,
       lastClose,
       attempts,

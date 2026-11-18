@@ -31,6 +31,7 @@ let questions = []
 let connected = false
 let agentStatus = 'idle'
 let port = null
+let hostVersion = null
 let awaitingReply = null
 let shotWatch = null
 
@@ -183,6 +184,11 @@ function renderStatus() {
   dot.className = 'dot'
   if (!connected) {
     statusLine.textContent = 'Offline'
+  } else if (hostVersion && hostVersion !== 'unknown' && versionChip.textContent && hostVersion !== versionChip.textContent.replace(/^v/, '')) {
+    // A stale Host process silently keeps old behaviour; say so instead of
+    // looking broken.
+    dot.classList.add('working')
+    statusLine.textContent = `Host ${hostVersion} · extension ${versionChip.textContent.slice(1)} — restart DSH`
   } else if (agentStatus === 'working') {
     dot.classList.add('working')
     statusLine.textContent = 'Working…'
@@ -508,6 +514,7 @@ async function refreshConnection() {
     if (!state) return
     connected = Boolean(state.connected)
     port = state.port
+    hostVersion = state.hostVersion ?? null
     versionChip.textContent = `v${state.version}`
     if (!connected) statusLine.textContent = state.lastError || 'Offline'
     renderStatus()

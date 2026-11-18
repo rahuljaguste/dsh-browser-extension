@@ -15,6 +15,7 @@ import { startFixture } from './fixture.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const extensionPath = join(root, 'extension')
+const extensionVersion = JSON.parse(await readFile(join(extensionPath, 'manifest.json'), 'utf8')).version
 
 // Playwright's own Chromium keeps --load-extension; Google Chrome 137+ ignores
 // it, so the test never uses the installed Chrome. Browsers download into the
