@@ -157,7 +157,7 @@ function attachmentError(attachments) {
 }
 
 function describeClose(event, port) {
-  if (event.code === 1008) return 'The bridge rejected the connection (token or protocol mismatch). Update both halves and copy the token again from browser_status.'
+  if (event.code === 1008) return 'The bridge rejected the connection (token or protocol mismatch). Update both halves and read the token from <DSH_HOME>/storages/browser-companion.json.'
   if (event.code === 1011) return 'The bridge reported an internal error.'
   if (event.code === 1006) return `Cannot reach ws://127.0.0.1:${port}. Is the DeepSeek Harness app running?`
   return `Disconnected from ws://127.0.0.1:${port} (code ${event.code}).`

@@ -66,7 +66,7 @@ document.getElementById('save').addEventListener('click', async () => {
   const port = Number(portInput.value)
   const token = tokenInput.value.trim()
   if (!token && !hasToken) {
-    statusLine.textContent = 'Paste the pairing token from browser_status first.'
+    statusLine.textContent = 'Read the pairing token from <DSH_HOME>/storages/browser-companion.json first.'
     return
   }
   if (!Number.isInteger(port) || port < 1 || port > 65535) {

@@ -14,7 +14,7 @@ between a DSH plugin and a Chrome extension.
 ## What you get
 
 - **16 browser tools** — navigate, snapshot, click, type, press, scroll, read,
-  wait, screenshot, tabs, evaluate (opt-in).
+  wait, screenshot, save file, tabs, evaluate (opt-in).
 - **A chat in the side panel** — a dedicated DSH Session, streamed over the
   bridge. Stop button, approvals, attachments, and history that survives an app
   restart.
@@ -63,6 +63,10 @@ screenshots and approvals over that one socket.
 Not on the Chrome Web Store or npm yet: you install from source. There are two
 halves — the Host plugin and the Chrome extension — and **they must be the same
 version**, because pairing speaks a versioned protocol (v2 since 0.9.0).
+
+Prebuilt artifacts are attached to GitHub releases: the extension `.zip` can be
+loaded unpacked, and the `.tgz` is the packaged Host half. The checkout
+instructions below remain the supported setup.
 
 ### 1. Clone
 
@@ -148,6 +152,11 @@ cd dsh-browser-extension && git pull
 Restart the DSH app, then click **Reload** on the extension card. Updating one
 half alone breaks pairing with a protocol-mismatch or `1008` close.
 
+If you upgraded from a release before 0.10.4, the old pairing token may appear in
+earlier model transcripts. Rotate it: stop DSH, delete
+`<DSH_HOME>/storages/browser-companion.json`, restart, read the newly generated
+token, and re-pair.
+
 ### Uninstall
 
 ```sh
@@ -173,7 +182,7 @@ Talk normally. For browser work the agent will `browser_open` → `browser_snaps
 
 | Tool | Purpose |
 |---|---|
-| `browser_status` | bridge state, paired browser, port, token |
+| `browser_status` | bridge state, paired browser, port, token file path |
 | `browser_tabs` | list tabs with ids, titles, URLs |
 | `browser_open` / `browser_close` / `browser_activate` | tab lifecycle |
 | `browser_navigate` | navigate the active tab (or a named one) |
@@ -181,11 +190,15 @@ Talk normally. For browser work the agent will `browser_open` → `browser_snaps
 | `browser_click` / `browser_type` / `browser_press` | interaction by ref or selector |
 | `browser_scroll` / `browser_read` / `browser_wait_for` | reading and waiting |
 | `browser_screenshot` | PNG of the visible area, saved to disk and shown in the panel |
-| `browser_save_file` | Hand the user a file: served on loopback and downloaded by Chrome into Downloads |
+| `browser_save_file` | Hand the user a file via Chrome Downloads; executable and script types are refused |
 | `browser_evaluate` | page JS — disabled unless `allowEvaluate: true` |
 
 Refs are rebuilt by every snapshot and die on navigation; stale refs fail with a
 message telling the model to re-snapshot.
+
+Tab and page URLs returned by tools have bearer-like query parameters (`token`,
+`key`, `auth`, `session`, `code`, and similar) and URL userinfo replaced with
+`REDACTED` before they reach the model or panel.
 
 ### The side panel
 
@@ -224,7 +237,7 @@ is a prompt-injection surface, so it is restricted per Session through
 
 | Value | Denied for this Session |
 |---|---|
-| `no-shell` *(default)* | `bash`, `pwsh`, `write`, `edit`, `terminal`, `plugin_manager` |
+| `no-shell` *(default)* | `bash`, `pwsh`, `write`, `edit`, `terminal`, `str_replace_editor`, `plugin_manager` |
 | `browser-only` | the above plus `read`, `read_image`, `glob`, `grep` |
 | `open` | nothing — full profile powers |
 
@@ -237,7 +250,7 @@ Denials apply to the sidebar Session only, never to the main chat.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Popup: *bridge speaks protocol N* | Host and extension versions differ | Update both halves, restart the app, reload the extension |
-| Popup: **close 1008** | Token or protocol mismatch | Re-copy it from `browser_status`; update both halves if versions differ |
+| Popup: **close 1008** | Token or protocol mismatch | Read the token from `<DSH_HOME>/storages/browser-companion.json`; update both halves if versions differ |
 | Popup: **close 1006** / cannot reach `ws://127.0.0.1:8787` | App not running, or port occupied | Start the app; check `port` in the config and the popup |
 | `/state` shows `"error": "Port 8787 is already in use"` | Another process owns the port | Change `port` in `cordis.patch.yml` and in the popup |
 | Extension vanished or "Could not load extension" | The checkout moved | Load unpacked again from the new path, re-pair |
@@ -283,6 +296,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for layout, style and PR expectations.
 - `browser_press` dispatches synthetic key events, which some handlers ignore.
 - `browser_evaluate` evaluates an expression in the page's main world, so a page
   CSP that forbids `eval` also refuses it.
+- URL redaction is best-effort: page text and screenshots can still contain
+  secrets that do not appear in a URL.
 - Assistant replies are per-step, not streamed token by token.
 - Single thread per profile; no model picker.
 

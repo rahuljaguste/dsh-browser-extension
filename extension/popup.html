@@ -17,7 +17,7 @@
     </label>
     <label>
       <span>Pairing token</span>
-      <input id="token" type="text" spellcheck="false" placeholder="Paste the token from browser_status" />
+      <input id="token" type="text" spellcheck="false" placeholder="Paste the pairing token from the token file" />
     </label>
     <div class="row">
       <button id="save">Save &amp; connect</button>
@@ -25,7 +25,8 @@
     </div>
     <button id="panel" class="wide ghost" title="Open the activity panel">Open side panel</button>
     <p class="hint">
-      In DSH, run <code>browser_status</code> to read the token. Both halves must agree on the port.
+      Run <code>browser_status</code> in DSH for the port, then read the token from
+      <code>&lt;DSH_HOME&gt;/storages/browser-companion.json</code>. Both halves must agree on the port.
     </p>
     <script src="popup.js"></script>
   </body>
