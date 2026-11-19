@@ -150,6 +150,11 @@ try {
   check('snapshot assigns a ref to the button', Boolean(greetRef), snapshot.text.slice(0, 400))
   const nameRef = /textbox "Name" \[ref=(e\d+)\]/.exec(snapshot.text)?.[1]
   check('snapshot assigns a ref to the input', Boolean(nameRef), snapshot.text.slice(0, 400))
+  check(
+    'snapshot hrefs redact secret query parameters',
+    snapshot.text.includes('token=REDACTED') && !snapshot.text.includes('supersecret'),
+    snapshot.text.slice(0, 800)
+  )
 
   await call('browser_type', { ref: nameRef, text: 'Ada' })
   const typed = await call('browser_evaluate', { expression: 'document.getElementById("name").value' })
@@ -208,6 +213,21 @@ try {
   )
   const secretRead = await call('browser_read')
   check('read URLs redact secret query parameters', secretRead.url.includes('token=REDACTED') && !secretRead.url.includes('supersecret'), secretRead.url)
+  const secretSnapshot = await call('browser_snapshot', {})
+  check(
+    'snapshot headers redact secret query parameters',
+    secretSnapshot.text.includes('token=REDACTED') && !secretSnapshot.text.includes('supersecret'),
+    secretSnapshot.text.slice(0, 300)
+  )
+  const badSelector = 'https://example.com/?token=supersecret'
+  const selectorError = await call('browser_click', { selector: badSelector })
+    .then(() => '')
+    .catch((error) => error.message)
+  check(
+    'error text redacts secret query parameters',
+    selectorError.includes('token=REDACTED') && !selectorError.includes('supersecret'),
+    selectorError
+  )
   await call('browser_close', { tabId: secretTab.id })
 
   // --- side panel chat -------------------------------------------------------

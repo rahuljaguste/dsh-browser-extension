@@ -16,6 +16,7 @@ const PAGE = `<!doctype html>
     <button id="greet">Greet</button>
     <div id="out"></div>
     <p><a id="next" href="/second">Second page</a></p>
+    <p><a id="secret-link" href="/second?token=supersecret&keep=1">Secret link</a></p>
     <form id="form" action="/submitted">
       <input name="q" id="q" placeholder="Search" />
       <button type="submit">Send</button>

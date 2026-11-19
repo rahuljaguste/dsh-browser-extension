@@ -43,7 +43,14 @@ const bridge = {
     broadcasts.push(message)
   },
   status() {
-    return { bridge: 'listening', connected: true, port: 8787, token: 'test-token', client: { name: 'probe', version: '0.5.0' } }
+    return {
+      bridge: 'listening',
+      connected: true,
+      port: 8787,
+      token: 'test-token',
+      client: { name: 'probe', version: '0.5.0' },
+      lastError: 'stale connection to https://example.com/?token=supersecret'
+    }
   }
 }
 
@@ -76,6 +83,11 @@ const status = await call('browser_status')
 check('status reports the connection', status.connected === true && status.port === 8787)
 check('status masks the pairing token', status.token === '••••••••' && !('credentials' in status))
 check('status points at the owner-only token file', /browser-companion\.json$/.test(status.tokenFile))
+check(
+  'status redacts URLs in lastError',
+  status.lastError.includes('token=REDACTED') && !status.lastError.includes('supersecret'),
+  status.lastError
+)
 
 await call('browser_tabs')
 check('tabs call reaches the bridge', calls.some((entry) => entry.method === 'tabs.list'))
@@ -93,6 +105,10 @@ check('save requires content', /exactly one of content/.test(badSave), badSave)
 const blockedSave = await call('browser_save_file', { filename: 'evil.command', content: 'x' })
   .then(() => '', (error) => error.message)
 check('save refuses executable and script file types', /Refusing to save/.test(blockedSave), blockedSave)
+
+const dottedSave = await call('browser_save_file', { filename: 'evil.command.', content: 'x' })
+  .then(() => '', (error) => error.message)
+check('save ignores trailing dots when checking file types', /Refusing to save/.test(dottedSave), dottedSave)
 
 downloadFailure = 'User gesture required'
 const failedDownload = await call('browser_save_file', { filename: 'x.txt', content: 'x' })

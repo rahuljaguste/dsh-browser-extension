@@ -196,9 +196,10 @@ Talk normally. For browser work the agent will `browser_open` → `browser_snaps
 Refs are rebuilt by every snapshot and die on navigation; stale refs fail with a
 message telling the model to re-snapshot.
 
-Tab and page URLs returned by tools have bearer-like query parameters (`token`,
-`key`, `auth`, `session`, `code`, and similar) and URL userinfo replaced with
-`REDACTED` before they reach the model or panel.
+Tab and page URLs returned by tools, snapshot hrefs, and URLs quoted in error
+text have bearer-like query parameters (`token`, `key`, `auth`, `session`,
+`code`, and similar) and URL userinfo replaced with `REDACTED` before they reach
+the model or panel. Relative snapshot hrefs are resolved against the page first.
 
 ### The side panel
 

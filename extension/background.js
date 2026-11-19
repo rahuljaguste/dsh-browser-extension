@@ -115,6 +115,11 @@ function redactResult(value, depth = 0) {
   return out
 }
 
+/** Redact http(s) URLs embedded in free-form text, such as error messages. */
+function redactText(value) {
+  return String(value ?? '').replace(/https?:\/\/[^\s"'<>]+/gi, (url) => redactUrl(url))
+}
+
 /* ------------------------------------------------------------------ badge */
 
 function setBadge(text, title) {
@@ -580,7 +585,9 @@ async function handleCommand(message) {
     })
     send({ id, ok: true, result })
   } catch (error) {
-    const text = error?.message ? String(error.message) : String(error)
+    // Error text often quotes the selector or URL that failed; redact it before
+    // it reaches the model, the panel, or browser_status.lastError.
+    const text = redactText(error?.message ? String(error.message) : String(error))
     recordActivity({
       at: Date.now(),
       method: message.method,

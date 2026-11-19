@@ -111,12 +111,15 @@ Nothing is deleted automatically. Remove those directories to clear local state.
 - **Approvals** raised by the sidebar Session are answered from the extension. If
   nobody answers within five minutes the request is rejected (fail closed), and
   closing a turn retires outstanding cards.
-- **URL redaction is best-effort.** Before tab/page URLs reach the model, the
-  extension replaces values of bearer-like query parameters (`token`, `key`,
-  `auth`, `session`, `code`, and similar) with `REDACTED` and drops URL
-  userinfo. Page text and screenshots can still contain secrets, so this is not
-  a complete data-loss-prevention boundary.
+- **URL redaction is best-effort.** Before tab/page URLs and snapshot hrefs
+  reach the model, the extension replaces values of bearer-like query parameters
+  (`token`, `key`, `auth`, `session`, `code`, and similar) with `REDACTED` and
+  drops URL userinfo. Relative snapshot hrefs are resolved against the page
+  first, and URLs quoted in command error text are redacted too. Page text and
+  screenshots can still contain secrets, so this is not a complete
+  data-loss-prevention boundary.
 - **`browser_save_file` refuses executable, script, and installer extensions**
-  (`.command`, `.sh`, `.exe`, `.msi`, `.js`, `.dmg`, and similar). It can still
-  write documents and archives, so review what a file download contains before
-  opening it.
+  (`.command`, `.sh`, `.exe`, `.msi`, `.js`, `.dmg`, and similar). Trailing dots
+  and spaces are stripped before the check, because Windows ignores them
+  (`evil.command.` would run as `evil.command`). It can still write documents and
+  archives, so review what a file download contains before opening it.

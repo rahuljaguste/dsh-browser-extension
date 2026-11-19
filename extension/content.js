@@ -19,6 +19,42 @@
   const refs = new Map()
   let nextRef = 1
 
+  const SECRET_QUERY_KEY = '(?:token|access_?token|id_?token|refresh_?token|key|api[_-]?key|auth|authorization|password|passwd|secret|session|session[_-]?id|sid|code|otp|sig|signature|jwt|credential|ticket)'
+  const SECRET_QUERY_RE = new RegExp(`^${SECRET_QUERY_KEY}$`, 'i')
+  const SECRET_HASH_RE = new RegExp(`(?:^#|[&?])${SECRET_QUERY_KEY}=`, 'i')
+
+  /**
+   * Redact bearer-like URL values in URLs this script emits. Relative hrefs are
+   * resolved against the current page so `/next?token=…` is caught too.
+   */
+  function redactUrl(value) {
+    if (typeof value !== 'string' || !value) return value
+    let url
+    try {
+      url = new URL(value, location.href)
+    } catch {
+      return value
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return value
+    let changed = false
+    for (const key of [...url.searchParams.keys()]) {
+      if (SECRET_QUERY_RE.test(key)) {
+        url.searchParams.set(key, 'REDACTED')
+        changed = true
+      }
+    }
+    if (url.username || url.password) {
+      url.username = 'REDACTED'
+      url.password = ''
+      changed = true
+    }
+    if (url.hash && SECRET_HASH_RE.test(url.hash)) {
+      url.hash = '#REDACTED'
+      changed = true
+    }
+    return changed ? url.toString() : value
+  }
+
   function tagOf(el) {
     return el.tagName ? el.tagName.toLowerCase() : ''
   }
@@ -126,7 +162,7 @@
     if (tagOf(el) !== 'a') return ''
     const href = el.getAttribute('href')
     if (!href || href.startsWith('javascript:')) return ''
-    return `href="${clean(href, 100)}"`
+    return `href="${clean(redactUrl(href), 100)}"`
   }
 
   function describeLine(el, role) {
@@ -191,13 +227,13 @@
       viewport: window.innerHeight
     }
     const header = [
-      `url: ${location.href}`,
+      `url: ${redactUrl(location.href)}`,
       `title: ${document.title || '(untitled)'}`,
       `viewport: ${window.innerWidth}x${window.innerHeight} scroll ${scroll.y}/${scroll.height}`,
       `nodes: ${lines.lines.length}${truncated ? ' (truncated)' : ''}`
     ].join('\n')
     return {
-      url: location.href,
+      url: redactUrl(location.href),
       title: document.title,
       text: header + '\n\n' + text,
       nodes: lines.lines.length,
@@ -211,7 +247,7 @@
     const normalized = raw.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
     const truncated = normalized.length > maxChars
     return {
-      url: location.href,
+      url: redactUrl(location.href),
       title: document.title,
       text: truncated ? normalized.slice(0, maxChars) + '\n… (truncated)' : normalized,
       length: normalized.length,
@@ -254,7 +290,7 @@
     if (el.disabled) throw new Error(`Cannot click a disabled ${summarize(el)}.`)
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
     el.click()
-    return { ok: true, matched: summarize(el), url: location.href, title: document.title }
+    return { ok: true, matched: summarize(el), url: redactUrl(location.href), title: document.title }
   }
 
   function type(args) {
@@ -283,7 +319,7 @@
     }
 
     if (args.submit) submitFrom(el)
-    const result = { ok: true, matched: summarize(el), url: location.href }
+    const result = { ok: true, matched: summarize(el), url: redactUrl(location.href) }
     // Snapshots redact password fields; the type result must not undo that by
     // echoing the saved value back into the transcript.
     const isPassword = tagOf(el) === 'input' && el.type === 'password'
@@ -312,7 +348,7 @@
       const form = el.form || el.closest?.('form')
       if (form && typeof form.requestSubmit === 'function') form.requestSubmit()
     }
-    return { ok: true, key, url: location.href }
+    return { ok: true, key, url: redactUrl(location.href) }
   }
 
   /** Wait until a smooth scroll stops moving, so the reported position is final. */

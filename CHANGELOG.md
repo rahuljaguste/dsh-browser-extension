@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.5
+
+- Security: snapshot headers and hrefs now redact bearer-like URL query
+  parameters, including relative links resolved against the page.
+- Security: command error text and `browser_status.lastError` redact URLs before
+  they reach the model, panel, or activity log.
+- Security: `browser_save_file` strips trailing dots and spaces before checking
+  the extension, closing the Windows `evil.command.` bypass.
+
 ## 0.10.4
 
 - Security: `browser_status` no longer returns the pairing token to the model;
